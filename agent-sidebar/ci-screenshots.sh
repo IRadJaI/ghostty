@@ -47,6 +47,12 @@ for theme in dark light; do
   osascript -e 'tell application "System Events" to set frontmost of (first process whose name is "ghostty") to true' || true
   sleep 2
   screencapture -x "$out/sidebar-$theme.png" || true
+  # Call stacks of the running app: shows what the main thread is doing if
+  # the UI did not update.
+  pid="$(pgrep -f 'Ghostty.app/Contents/MacOS/ghostty' | head -1)"
+  if [ -n "$pid" ]; then
+    sample "$pid" 2 -file "$out/sample-$theme.txt" >/dev/null 2>&1 || true
+  fi
   pkill -f "Ghostty.app/Contents/MacOS/ghostty" || true
   sleep 3
 done
