@@ -118,6 +118,12 @@ struct AgentSidebarView: View {
                 searchField
             }
             Divider()
+            if AgentSidebarDemo.enabled, model.tabs.isEmpty {
+                Text(model.debugInfo.isEmpty ? "no refresh yet" : model.debugInfo)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .padding(6)
+            }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(visibleTabs) { tab in

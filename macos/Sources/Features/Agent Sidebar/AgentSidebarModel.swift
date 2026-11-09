@@ -39,6 +39,10 @@ final class AgentSidebarModel: ObservableObject {
     @Published private(set) var tabs: [Tab] = []
     @Published private(set) var recentSessions: [AgentRecentSession] = []
 
+    /// Diagnostics shown in demo mode (`GHOSTTY_AGENT_SIDEBAR_DEMO=1`).
+    @Published private(set) var debugInfo = ""
+    private var refreshCount = 0
+
     private struct WeakWindow {
         weak var window: NSWindow?
     }
@@ -174,6 +178,13 @@ final class AgentSidebarModel: ObservableObject {
         }
 
         windows = liveWindows
+        if AgentSidebarDemo.enabled {
+            refreshCount += 1
+            let classes = NSApp.windows.map {
+                "\(type(of: $0))/\($0.windowController.map { String(describing: type(of: $0)) } ?? "nil")"
+            }
+            debugInfo = "refresh \(refreshCount), tabs \(result.count), windows: \(classes.joined(separator: ", "))"
+        }
         if AgentSidebarDemo.enabled, let groupID = result.first?.groupID {
             result = AgentSidebarDemo.tabs(groupID: groupID)
             if recentSessions.isEmpty {

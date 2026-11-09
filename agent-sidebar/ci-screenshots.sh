@@ -18,6 +18,15 @@ sleep 600
 DEMO
 chmod +x "$work/demo.sh"
 
+# A colourful desktop makes translucency visible in the screenshots, and the
+# accessibility setting tells whether this machine draws translucency at all.
+echo "reduceTransparency: $(defaults read com.apple.universalaccess reduceTransparency 2>&1 | tail -1)"
+wallpaper="$(ls /System/Library/Desktop\ Pictures/*.heic /System/Library/Desktop\ Pictures/*.jpg 2>/dev/null | head -1)"
+echo "wallpaper: $wallpaper"
+if [ -n "$wallpaper" ]; then
+  osascript -e "tell application \"System Events\" to set picture of every desktop to \"$wallpaper\"" || true
+fi
+
 for theme in dark light; do
   {
     echo "window-theme = $theme"
