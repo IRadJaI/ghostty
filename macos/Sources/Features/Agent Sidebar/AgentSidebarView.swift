@@ -110,14 +110,34 @@ struct AgentSidebarView: View {
     @State private var searching = false
     @State private var query = ""
     @State private var recentExpanded = AgentSidebarDemo.enabled
+    @State private var debugTick = 0
 
     var body: some View {
+        let _ = AgentSidebarDebug.noteBodyEvaluation()
         VStack(spacing: 0) {
             header
             if searching {
                 searchField
             }
             Divider()
+            if AgentSidebarDemo.enabled {
+                // Temporary diagnostics.
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("body tick \(debugTick), tabs \(model.tabs.count)")
+                    TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                        Text("evals \(AgentSidebarDebug.bodyEvaluations) fires \(AgentSidebarDebug.timerFires) "
+                            + "same \(model === AgentSidebarModel.shared ? "y" : "n") "
+                            + "m \(model.tabs.count) s \(AgentSidebarModel.shared.tabs.count)")
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.red)
+                .padding(6)
+                .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+                    AgentSidebarDebug.timerFires += 1
+                    debugTick += 1
+                }
+            }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(visibleTabs) { tab in
@@ -316,6 +336,17 @@ struct AgentSidebarView: View {
                 }
             }
         }
+    }
+}
+
+/// Temporary counters for diagnosing view updates.
+@MainActor
+enum AgentSidebarDebug {
+    static var bodyEvaluations = 0
+    static var timerFires = 0
+
+    static func noteBodyEvaluation() {
+        bodyEvaluations += 1
     }
 }
 
