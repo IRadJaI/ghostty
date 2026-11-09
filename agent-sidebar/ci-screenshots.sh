@@ -42,7 +42,8 @@ for theme in dark light; do
     fi
   } > "$work/ghostty/config"
 
-  open -n --env GHOSTTY_AGENT_SIDEBAR_DEMO=1 --env XDG_CONFIG_HOME="$work" "$app"
+  open -n --env GHOSTTY_AGENT_SIDEBAR_DEMO=1 --env XDG_CONFIG_HOME="$work" \
+    --stdout "$out/stdout-$theme.txt" --stderr "$out/stderr-$theme.txt" "$app"
   sleep 12
   osascript -e 'tell application "System Events" to set frontmost of (first process whose name is "ghostty") to true' || true
   sleep 2
@@ -52,6 +53,9 @@ for theme in dark light; do
   pid="$(pgrep -f 'Ghostty.app/Contents/MacOS/ghostty' | head -1)"
   if [ -n "$pid" ]; then
     sample "$pid" 2 -file "$out/sample-$theme.txt" >/dev/null 2>&1 || true
+    # Runtime warnings from SwiftUI / AttributeGraph end up in the unified log.
+    log show --last 40s --style compact --predicate "processID == $pid" 2>/dev/null \
+      | grep -iE 'swiftui|attributegraph|cycle|publishing|state|fault|error' | tail -200 > "$out/log-$theme.txt" || true
   fi
   pkill -f "Ghostty.app/Contents/MacOS/ghostty" || true
   sleep 3
