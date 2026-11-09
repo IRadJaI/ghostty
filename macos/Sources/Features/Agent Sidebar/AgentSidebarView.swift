@@ -20,11 +20,20 @@ struct AgentSidebarContainer<Content: View>: View {
     }
 
     var body: some View {
+        let variant = AgentSidebarDebug.variant
         HStack(spacing: 0) {
-            if visible {
+            if variant == 0 {
+                EmptyView()
+            } else if variant == 1 {
+                Color.gray.frame(width: 240)
+            } else if visible {
                 AgentSidebarView(windowProvider: windowProvider)
                     .frame(width: AgentSidebarModel.clampedWidth(width))
-                AgentSidebarResizeHandle(width: $width)
+                if variant == 7 {
+                    Divider()
+                } else {
+                    AgentSidebarResizeHandle(width: $width)
+                }
             } else {
                 AgentSidebarRail()
                 Divider()
@@ -110,34 +119,27 @@ struct AgentSidebarView: View {
     @State private var searching = false
     @State private var query = ""
     @State private var recentExpanded = AgentSidebarDemo.enabled
-    @State private var debugTick = 0
 
     var body: some View {
-        let _ = AgentSidebarDebug.noteBodyEvaluation()
+        let variant = AgentSidebarDebug.variant
         VStack(spacing: 0) {
-            header
+            if variant != 3 {
+                header
+            }
             if searching {
                 searchField
             }
             Divider()
-            if AgentSidebarDemo.enabled {
-                // Temporary diagnostics.
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("body tick \(debugTick), tabs \(model.tabs.count)")
-                    TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                        Text("evals \(AgentSidebarDebug.bodyEvaluations) fires \(AgentSidebarDebug.timerFires) "
-                            + "same \(model === AgentSidebarModel.shared ? "y" : "n") "
-                            + "m \(model.tabs.count) s \(AgentSidebarModel.shared.tabs.count)")
+            if variant == 4 {
+                Spacer()
+            } else if variant == 8 {
+                VStack(alignment: .leading) {
+                    ForEach(visibleTabs) { tab in
+                        Text(tab.title)
                     }
+                    Spacer()
                 }
-                .font(.caption2)
-                .foregroundStyle(.red)
-                .padding(6)
-                .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-                    AgentSidebarDebug.timerFires += 1
-                    debugTick += 1
-                }
-            }
+            } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(visibleTabs) { tab in
@@ -174,9 +176,18 @@ struct AgentSidebarView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             }
+            }
         }
-        .background { AgentSidebarBackground().ignoresSafeArea(.container, edges: .top) }
-        .onAppear { model.start() }
+        .background {
+            if variant != 2 {
+                AgentSidebarBackground().ignoresSafeArea(.container, edges: .top)
+            }
+        }
+        .onAppear {
+            if variant != 6 {
+                model.start()
+            }
+        }
         .onChange(of: hideNativeTabBar) { _ in model.refresh() }
         .onChange(of: showRecent) { _ in model.refresh() }
         .onChange(of: showGitRepo) { _ in model.refresh() }
@@ -340,14 +351,10 @@ struct AgentSidebarView: View {
 }
 
 /// Temporary counters for diagnosing view updates.
-@MainActor
+/// `GHOSTTY_AGENT_SIDEBAR_VARIANT=<n>` leaves one part of the sidebar out so
+/// CI can find which part upsets SwiftUI. 5 (the default) is the full sidebar.
 enum AgentSidebarDebug {
-    static var bodyEvaluations = 0
-    static var timerFires = 0
-
-    static func noteBodyEvaluation() {
-        bodyEvaluations += 1
-    }
+    static let variant = Int(ProcessInfo.processInfo.environment["GHOSTTY_AGENT_SIDEBAR_VARIANT"] ?? "") ?? 5
 }
 
 // MARK: - Background
