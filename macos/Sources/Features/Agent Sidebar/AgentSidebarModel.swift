@@ -344,8 +344,14 @@ final class AgentSidebarModel: ObservableObject {
             // Let the content view reach under the titlebar so the sidebar
             // backdrop can run the full height of the window, like Finder.
             // The terminal itself stays below the titlebar (safe area).
-            if sidebarVisible, !window.styleMask.contains(.fullSizeContentView) {
-                window.styleMask.insert(.fullSizeContentView)
+            if sidebarVisible {
+                if !window.styleMask.contains(.fullSizeContentView) {
+                    window.styleMask.insert(.fullSizeContentView)
+                }
+                // An opaque titlebar would paint over the backdrop.
+                if !window.titlebarAppearsTransparent {
+                    window.titlebarAppearsTransparent = true
+                }
             }
             for accessory in window.titlebarAccessoryViewControllers {
                 // Ghostty tags the tab bar accessory itself; only the main

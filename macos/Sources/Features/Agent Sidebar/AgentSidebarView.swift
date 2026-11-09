@@ -377,7 +377,7 @@ private struct AgentSidebarRow: View {
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(tab.title.isEmpty ? "Terminal" : tab.title)
+                Text(displayTitle)
                     .font(.callout.weight(tab.isSelected ? .semibold : .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -441,6 +441,16 @@ private struct AgentSidebarRow: View {
             return 0.16
         }
         return hovering ? 0.07 : 0
+    }
+
+    /// The tab title without the "✳" Claude Code puts in front of it: the
+    /// row already shows the agent's glyph.
+    private var displayTitle: String {
+        var title = tab.title.trimmingCharacters(in: .whitespaces)
+        if tab.agent == .claude, title.hasPrefix("✳") {
+            title = String(title.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        return title.isEmpty ? "Terminal" : title
     }
 
     private func statusText(_ state: AgentState) -> String {
