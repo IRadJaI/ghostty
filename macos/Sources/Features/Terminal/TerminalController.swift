@@ -1124,7 +1124,8 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // intrinsicContentSize returns the correct value immediately,
         // without waiting for @FocusedValue to propagate through the
         // SwiftUI focus chain.
-        container.initialContentSize = focusedSurface?.initialSize
+        // agent-sidebar: leave room for the sidebar next to the terminal.
+        container.initialContentSize = AgentSidebarModel.contentSize(forTerminal: focusedSurface?.initialSize)
 
         window.contentView = container
 

@@ -267,6 +267,10 @@ final class AgentSidebarModel: ObservableObject {
             let live = Set(tabs.compactMap { $0.pwd })
             gitCache = gitCache.filter { live.contains($0.key) || $0.value.loading }
         }
+
+        // Publish right away. The entry is fresh now, so this cannot start
+        // another load.
+        refresh()
     }
 
     // MARK: Recent sessions
@@ -298,9 +302,9 @@ final class AgentSidebarModel: ObservableObject {
     /// Hides AppKit's own tab bar while the sidebar is showing the tabs.
     ///
     /// The tab bar is a titlebar accessory, and hiding an accessory view
-    /// controller is public API. Finding which accessory holds the tab bar
-    /// relies on the private `NSTabBar` class name, the same as the rest of
-    /// Ghostty's tab code. If it is not found nothing changes.
+    /// controller is public API. The accessory is found by the identifier
+    /// Ghostty's window classes give it, with the private `NSTabBar` class
+    /// name as a fallback. If it is not found nothing changes.
     private func applyNativeTabBarVisibility() {
         let defaults = UserDefaults.standard
         let hide = defaults.bool(forKey: AgentSidebarDefaults.visible)
@@ -309,15 +313,43 @@ final class AgentSidebarModel: ObservableObject {
         for entry in windows.values {
             guard let window = entry.window, window.styleMask.contains(.titled) else { continue }
             for accessory in window.titlebarAccessoryViewControllers {
-                let view = accessory.view
-                let isTabBar = String(describing: type(of: view)) == "NSTabBar"
-                    || view.firstDescendant(withClassName: "NSTabBar") != nil
+                // Ghostty tags the tab bar accessory itself; only the main
+                // window's accessory actually contains the NSTabBar view.
+                let isTabBar = accessory.identifier == TerminalWindow.tabBarIdentifier
+                    || accessory.view.contains(className: "NSTabBar")
                 guard isTabBar else { continue }
                 if accessory.isHidden != hide {
                     accessory.isHidden = hide
                 }
             }
         }
+    }
+
+    // MARK: Layout
+
+    /// Width the sidebar (or its collapsed rail) takes from a window,
+    /// including the divider.
+    static var occupiedWidth: CGFloat {
+        _ = shared // registers the defaults
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: AgentSidebarDefaults.visible) else {
+            return collapsedWidth + 1
+        }
+        return clampedWidth(defaults.double(forKey: AgentSidebarDefaults.width)) + 1
+    }
+
+    static let collapsedWidth: CGFloat = 28
+
+    static func clampedWidth(_ width: Double) -> CGFloat {
+        CGFloat(min(max(width, 180), 480))
+    }
+
+    /// Window content size that leaves a terminal of `terminalSize` next to
+    /// the sidebar. Used for the initial size of new windows.
+    static func contentSize(forTerminal terminalSize: NSSize?) -> NSSize? {
+        guard var size = terminalSize else { return nil }
+        size.width += occupiedWidth
+        return size
     }
 
     // MARK: Actions
@@ -335,7 +367,14 @@ final class AgentSidebarModel: ObservableObject {
 
     /// Closes a tab, with Ghostty's usual confirmation for running processes.
     func close(_ tab: Tab) {
-        guard let controller = window(for: tab)?.windowController as? TerminalController else { return }
+        guard let window = window(for: tab),
+              let controller = window.windowController as? TerminalController
+        else { return }
+        // The confirmation is a sheet on the tab's own window, so bring that
+        // tab to the front first when a confirmation is going to be shown.
+        if controller.surfaceTree.contains(where: { $0.needsConfirmQuit }) {
+            window.makeKeyAndOrderFront(nil)
+        }
         controller.closeTab(nil)
     }
 

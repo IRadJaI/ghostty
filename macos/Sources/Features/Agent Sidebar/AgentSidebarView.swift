@@ -23,7 +23,7 @@ struct AgentSidebarContainer<Content: View>: View {
         HStack(spacing: 0) {
             if visible {
                 AgentSidebarView(windowProvider: windowProvider)
-                    .frame(width: CGFloat(min(max(width, 180), 480)))
+                    .frame(width: AgentSidebarModel.clampedWidth(width))
                 Divider()
             } else {
                 AgentSidebarRail()
@@ -51,9 +51,9 @@ private struct AgentSidebarRail: View {
             .padding(.top, 10)
             Spacer()
         }
-        .frame(width: 28)
+        .frame(width: AgentSidebarModel.collapsedWidth)
         .frame(maxHeight: .infinity)
-        .background(.regularMaterial)
+        .background { AgentSidebarBackground() }
     }
 }
 
@@ -109,7 +109,7 @@ struct AgentSidebarView: View {
                 .padding(.vertical, 6)
             }
         }
-        .background(.regularMaterial)
+        .background { AgentSidebarBackground() }
         .onAppear { model.start() }
         .onChange(of: hideNativeTabBar) { _ in model.refresh() }
         .onChange(of: showRecent) { _ in model.refresh() }
@@ -271,6 +271,23 @@ struct AgentSidebarView: View {
             }
         }
     }
+}
+
+// MARK: - Background
+
+/// The translucent sidebar backdrop. It blends with whatever is behind the
+/// window (the desktop or other windows), like Finder's sidebar; on macOS 26
+/// the system renders this material in the Liquid Glass style.
+private struct AgentSidebarBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 // MARK: - Tab row

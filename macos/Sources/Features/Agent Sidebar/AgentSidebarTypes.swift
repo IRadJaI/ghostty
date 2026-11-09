@@ -411,7 +411,7 @@ enum AgentSidebarFormat {
             return "~"
         }
         if path.hasPrefix(home + "/") {
-            return "~" + path.dropFirst(home.count)
+            return "~" + String(path.dropFirst(home.count))
         }
         return path
     }
