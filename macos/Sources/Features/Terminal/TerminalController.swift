@@ -1114,7 +1114,10 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
         // Initialize our content view to the SwiftUI root
         let container = TerminalViewContainer {
-            TerminalView(ghostty: ghostty, viewModel: self, delegate: self)
+            // agent-sidebar: wrap the terminal with the vertical tab sidebar.
+            AgentSidebarContainer(windowProvider: { [weak self] in self?.window }) {
+                TerminalView(ghostty: ghostty, viewModel: self, delegate: self)
+            }
         }
 
         // Set the initial content size on the container so that
