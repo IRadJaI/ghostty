@@ -53,6 +53,10 @@ jobs:
         if: failure()
         run: grep -n -B2 -A12 "error:" "$RUNNER_TEMP/xcodebuild.log" | head -400 || true
 
+      # Ad-hoc signature so the downloaded app can start on Apple Silicon.
+      - name: Ad-hoc sign
+        run: codesign --force --deep --sign - macos/build/Debug/Ghostty.app
+
       - name: Package app
         run: ditto -c -k --keepParent macos/build/Debug/Ghostty.app "$RUNNER_TEMP/Ghostty-agent-sidebar-debug.zip"
 
