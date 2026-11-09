@@ -11,7 +11,7 @@ enum AgentSidebarDemo {
     private static let anchors: [NSObject] = (0..<6).map { _ in NSObject() }
 
     @MainActor
-    static func tabs(groupID: ObjectIdentifier) -> [AgentSidebarModel.Tab] {
+    static func tabs(groupID: ObjectIdentifier, selected: ObjectIdentifier) -> [AgentSidebarModel.Tab] {
         typealias Tab = AgentSidebarModel.Tab
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         func tab(
@@ -26,7 +26,7 @@ enum AgentSidebarDemo {
             changes: Int? = nil
         ) -> Tab {
             Tab(
-                id: ObjectIdentifier(anchors[index]),
+                id: index == 0 ? selected : ObjectIdentifier(anchors[index]),
                 groupID: groupID,
                 title: title,
                 pwd: home + path,

@@ -20,20 +20,11 @@ struct AgentSidebarContainer<Content: View>: View {
     }
 
     var body: some View {
-        let variant = AgentSidebarDebug.variant
         HStack(spacing: 0) {
-            if variant == 0 {
-                EmptyView()
-            } else if variant == 1 {
-                Color.gray.frame(width: 240)
-            } else if visible {
+            if visible {
                 AgentSidebarView(windowProvider: windowProvider)
                     .frame(width: AgentSidebarModel.clampedWidth(width))
-                if variant == 7 {
-                    Divider()
-                } else {
-                    AgentSidebarResizeHandle(width: $width)
-                }
+                AgentSidebarResizeHandle(width: $width)
             } else {
                 AgentSidebarRail()
                 Divider()
@@ -119,27 +110,15 @@ struct AgentSidebarView: View {
     @State private var searching = false
     @State private var query = ""
     @State private var recentExpanded = AgentSidebarDemo.enabled
+    @State private var windowID: ObjectIdentifier?
 
     var body: some View {
-        let variant = AgentSidebarDebug.variant
         VStack(spacing: 0) {
-            if variant != 3 {
-                header
-            }
+            header
             if searching {
                 searchField
             }
             Divider()
-            if variant == 4 {
-                Spacer()
-            } else if variant == 8 {
-                VStack(alignment: .leading) {
-                    ForEach(visibleTabs) { tab in
-                        Text(tab.title)
-                    }
-                    Spacer()
-                }
-            } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(visibleTabs) { tab in
@@ -176,16 +155,15 @@ struct AgentSidebarView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             }
-            }
         }
-        .background {
-            if variant != 2 {
-                AgentSidebarBackground().ignoresSafeArea(.container, edges: .top)
-            }
-        }
+        .background { AgentSidebarBackground().ignoresSafeArea(.container, edges: .top) }
         .onAppear {
-            if variant != 6 {
-                model.start()
+            resolveWindow()
+            model.start()
+        }
+        .onReceive(model.objectWillChange) { _ in
+            if windowID == nil {
+                resolveWindow()
             }
         }
         .onChange(of: hideNativeTabBar) { _ in model.refresh() }
@@ -197,17 +175,24 @@ struct AgentSidebarView: View {
 
     // MARK: Data
 
+    /// Remembers which window hosts this sidebar.
+    ///
+    /// This must not happen while `body` is evaluated: asking AppKit for the
+    /// window or its tab group there re-enters SwiftUI's update and it stops
+    /// updating the sidebar ("AttributeGraph: cycle detected").
+    private func resolveWindow() {
+        if let window = windowProvider() {
+            windowID = ObjectIdentifier(window)
+        }
+    }
+
     /// The tabs of the window this sidebar lives in, after filters.
     private var visibleTabs: [AgentSidebarModel.Tab] {
         var tabs = model.tabs
-        if let window = windowProvider() {
-            let groupID = AgentSidebarModel.groupID(for: window)
-            let own = tabs.filter { $0.groupID == groupID }
-            // Right after a window is created AppKit may not have put it in
-            // its tab group yet; show everything rather than an empty list.
-            if !own.isEmpty {
-                tabs = own
-            }
+        // The model already knows the tab group of every window, so `body`
+        // only compares identifiers.
+        if let groupID = tabs.first(where: { $0.id == windowID })?.groupID {
+            tabs = tabs.filter { $0.groupID == groupID }
         }
         if agentsOnly {
             tabs = tabs.filter { $0.agent != nil }
@@ -351,12 +336,6 @@ struct AgentSidebarView: View {
 }
 
 /// Temporary counters for diagnosing view updates.
-/// `GHOSTTY_AGENT_SIDEBAR_VARIANT=<n>` leaves one part of the sidebar out so
-/// CI can find which part upsets SwiftUI. 5 (the default) is the full sidebar.
-enum AgentSidebarDebug {
-    static let variant = Int(ProcessInfo.processInfo.environment["GHOSTTY_AGENT_SIDEBAR_VARIANT"] ?? "") ?? 5
-}
-
 // MARK: - Background
 
 /// The translucent sidebar backdrop. It blends with whatever is behind the

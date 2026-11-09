@@ -36,9 +36,7 @@ final class AgentSidebarModel: ObservableObject {
         }
     }
 
-    /// Sent by hand before every change below. The publisher that
-    /// `@Published` synthesizes never fired for this class in the built app
-    /// (observed with the CI screenshots), so the model does not rely on it.
+    /// Sent by hand before every change below.
     let objectWillChange = ObservableObjectPublisher()
 
     private(set) var tabs: [Tab] = [] {
@@ -184,8 +182,8 @@ final class AgentSidebarModel: ObservableObject {
         }
 
         windows = liveWindows
-        if AgentSidebarDemo.enabled, let groupID = result.first?.groupID {
-            result = AgentSidebarDemo.tabs(groupID: groupID)
+        if AgentSidebarDemo.enabled, let first = result.first {
+            result = AgentSidebarDemo.tabs(groupID: first.groupID, selected: first.id)
             if recentSessions.isEmpty {
                 recentSessions = AgentSidebarDemo.recentSessions
             }
