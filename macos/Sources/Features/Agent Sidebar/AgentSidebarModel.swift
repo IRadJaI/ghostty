@@ -183,7 +183,7 @@ final class AgentSidebarModel: ObservableObject {
 
         windows = liveWindows
         if AgentSidebarDemo.enabled, let first = result.first {
-            result = AgentSidebarDemo.tabs(groupID: first.groupID, selected: first.id)
+            result = AgentSidebarDemo.tabs(groupID: first.groupID, realWindow: first.id)
             if recentSessions.isEmpty {
                 recentSessions = AgentSidebarDemo.recentSessions
             }
