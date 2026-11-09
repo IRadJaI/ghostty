@@ -1,0 +1,64 @@
+# Fork addition (agent-sidebar): build the macOS app on a GitHub-hosted
+# runner so the sidebar code is compiled on every push to the fork branch.
+name: agent-sidebar
+
+on:
+  push:
+    branches: [agent-sidebar]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-sidebar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      ZIG_VERSION: 0.17.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: |
+          xcodebuild -version
+          xcodebuild -downloadComponent MetalToolchain || true
+
+      - name: Install Zig
+        run: |
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-aarch64-macos-${ZIG_VERSION}.tar.xz" -o "$RUNNER_TEMP/zig.tar.xz"
+          mkdir -p "$RUNNER_TEMP/zig"
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP/zig" --strip-components 1
+          echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/zig/zig" version
+
+      # GhosttyKit is the framework built from Zig that the Swift app links.
+      - name: Build GhosttyKit
+        run: zig build -Demit-macos-app=false
+
+      - name: Build Ghostty.app
+        run: |
+          set -o pipefail
+          xcodebuild -project macos/Ghostty.xcodeproj -scheme Ghostty \
+            -configuration Debug SYMROOT="$PWD/macos/build" \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | grep -E "error:|warning: .*Agent Sidebar|BUILD (SUCCEEDED|FAILED)|^\*\*" || true
+          grep -q "BUILD SUCCEEDED" "$RUNNER_TEMP/xcodebuild.log"
+
+      - name: Compiler errors
+        if: failure()
+        run: grep -n -B2 -A12 "error:" "$RUNNER_TEMP/xcodebuild.log" | head -400 || true
+
+      - name: Package app
+        run: ditto -c -k --keepParent macos/build/Debug/Ghostty.app "$RUNNER_TEMP/Ghostty-agent-sidebar-debug.zip"
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ghostty-agent-sidebar-debug
+          path: ${{ runner.temp }}/Ghostty-agent-sidebar-debug.zip
+          retention-days: 14
