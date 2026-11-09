@@ -75,7 +75,7 @@ struct AgentSidebarView: View {
 
     @State private var searching = false
     @State private var query = ""
-    @State private var recentExpanded = false
+    @State private var recentExpanded = AgentSidebarDemo.enabled
 
     var body: some View {
         VStack(spacing: 0) {

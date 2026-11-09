@@ -162,13 +162,19 @@ final class AgentSidebarModel: ObservableObject {
         }
 
         windows = liveWindows
+        if AgentSidebarDemo.enabled, let groupID = result.first?.groupID {
+            result = AgentSidebarDemo.tabs(groupID: groupID)
+            if recentSessions.isEmpty {
+                recentSessions = AgentSidebarDemo.recentSessions
+            }
+        }
         if result != tabs {
             tabs = result
         }
 
         applyNativeTabBarVisibility()
 
-        if defaults.bool(forKey: AgentSidebarDefaults.showRecent) {
+        if defaults.bool(forKey: AgentSidebarDefaults.showRecent), !AgentSidebarDemo.enabled {
             refreshRecentSessionsIfNeeded()
         }
     }

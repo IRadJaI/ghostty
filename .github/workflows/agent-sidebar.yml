@@ -60,6 +60,21 @@ jobs:
       - name: Package app
         run: ditto -c -k --keepParent macos/build/Debug/Ghostty.app "$RUNNER_TEMP/Ghostty-agent-sidebar-debug.zip"
 
+      # Launch the app with sample sidebar content and capture the screen in
+      # light and dark appearance, so the UI can be reviewed without a Mac.
+      - name: Screenshots
+        continue-on-error: true
+        run: agent-sidebar/ci-screenshots.sh "$PWD/macos/build/Debug/Ghostty.app" "$RUNNER_TEMP/shots"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidebar-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload app
         uses: actions/upload-artifact@v4
         with:
