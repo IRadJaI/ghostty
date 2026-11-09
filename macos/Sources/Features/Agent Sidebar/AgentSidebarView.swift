@@ -24,13 +24,47 @@ struct AgentSidebarContainer<Content: View>: View {
             if visible {
                 AgentSidebarView(windowProvider: windowProvider)
                     .frame(width: AgentSidebarModel.clampedWidth(width))
-                Divider()
+                AgentSidebarResizeHandle(width: $width)
             } else {
                 AgentSidebarRail()
                 Divider()
             }
             content
         }
+    }
+}
+
+/// The divider between the sidebar and the terminal; drag it to resize.
+private struct AgentSidebarResizeHandle: View {
+    @Binding var width: Double
+    @State private var widthAtDragStart: Double?
+
+    var body: some View {
+        Divider()
+            .overlay {
+                Color.clear
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        if inside {
+                            NSCursor.resizeLeftRight.push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { value in
+                                let start = widthAtDragStart ?? width
+                                widthAtDragStart = start
+                                width = Double(AgentSidebarModel.clampedWidth(start + Double(value.translation.width)))
+                            }
+                            .onEnded { _ in
+                                widthAtDragStart = nil
+                            }
+                    )
+                    .help("Drag to resize the sidebar")
+            }
     }
 }
 
@@ -93,6 +127,18 @@ struct AgentSidebarView: View {
                             select: { model.select(tab) },
                             close: { model.close(tab) }
                         )
+                        .contextMenu {
+                            Button("Rename Tab…") { model.rename(tab) }
+                            if let pwd = tab.pwd, !pwd.isEmpty {
+                                Button("Copy Working Directory") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(pwd, forType: .string)
+                                }
+                            }
+                            Divider()
+                            Button("Close Tab") { model.close(tab) }
+                            Button("Close Other Tabs") { model.closeOthers(tab) }
+                        }
                     }
                     if visibleTabs.isEmpty {
                         Text(agentsOnly ? "No agent tabs" : "No tabs")
@@ -351,7 +397,7 @@ private struct AgentSidebarRow: View {
                 .buttonStyle(.plain)
                 .help("Close tab")
                 .accessibilityLabel("Close tab")
-            } else if tab.state == .waiting || tab.hasBell {
+            } else if tab.needsAttention {
                 Circle()
                     .fill(Color.orange)
                     .frame(width: 8, height: 8)

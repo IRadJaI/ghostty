@@ -29,6 +29,11 @@ final class AgentSidebarModel: ObservableObject {
         var state: AgentState?
         var message: String?
         var git: AgentGitInfo?
+
+        /// The agent is blocked on the user, or the terminal rang its bell.
+        var needsAttention: Bool {
+            state == .waiting || hasBell
+        }
     }
 
     @Published private(set) var tabs: [Tab] = []
@@ -69,6 +74,8 @@ final class AgentSidebarModel: ObservableObject {
             refresh()
             return
         }
+
+        AgentSidebarMenu.shared.install()
 
         let timer = Timer(timeInterval: Self.refreshInterval, repeats: true) { _ in
             Task { @MainActor in
@@ -369,6 +376,40 @@ final class AgentSidebarModel: ObservableObject {
         guard let window = window(for: tab) else { return }
         window.makeKeyAndOrderFront(nil)
         refresh()
+    }
+
+    /// Switches to the next tab that waits for the user, starting after the
+    /// tab of the key window and wrapping around.
+    func selectNextNeedingAttention() {
+        refresh()
+        guard !tabs.isEmpty else { return }
+        let keyWindow = NSApp.keyWindow
+        let current = tabs.firstIndex { windows[$0.id]?.window === keyWindow } ?? -1
+        for offset in 1...tabs.count {
+            let tab = tabs[(current + offset) % tabs.count]
+            if tab.needsAttention {
+                select(tab)
+                return
+            }
+        }
+    }
+
+    /// Asks for a new tab title with Ghostty's own prompt.
+    func rename(_ tab: Tab) {
+        guard let window = window(for: tab),
+              let controller = window.windowController as? TerminalController
+        else { return }
+        window.makeKeyAndOrderFront(nil)
+        controller.promptTabTitle()
+    }
+
+    /// Closes every other tab of the same window.
+    func closeOthers(_ tab: Tab) {
+        guard let window = window(for: tab),
+              let controller = window.windowController as? TerminalController
+        else { return }
+        window.makeKeyAndOrderFront(nil)
+        controller.closeOtherTabs(nil)
     }
 
     /// Closes a tab, with Ghostty's usual confirmation for running processes.
