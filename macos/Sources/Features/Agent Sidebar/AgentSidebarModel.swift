@@ -135,7 +135,12 @@ final class AgentSidebarModel: ObservableObject {
             let groupID = Self.groupID(for: window)
             guard seenGroups.insert(groupID).inserted else { continue }
 
-            let groupWindows = window.tabGroup?.windows ?? [window]
+            // A window without tabs still has a tab group, but that group's
+            // window list is empty and it has no selected window.
+            var groupWindows = window.tabGroup?.windows ?? []
+            if groupWindows.isEmpty {
+                groupWindows = [window]
+            }
             let selectedWindow = window.tabGroup?.selectedWindow ?? window
 
             for tabWindow in groupWindows {
@@ -323,8 +328,17 @@ final class AgentSidebarModel: ObservableObject {
         let hide = defaults.bool(forKey: AgentSidebarDefaults.visible)
             && defaults.bool(forKey: AgentSidebarDefaults.hideNativeTabBar)
 
+        let sidebarVisible = defaults.bool(forKey: AgentSidebarDefaults.visible)
+
         for entry in windows.values {
             guard let window = entry.window, window.styleMask.contains(.titled) else { continue }
+
+            // Let the content view reach under the titlebar so the sidebar
+            // backdrop can run the full height of the window, like Finder.
+            // The terminal itself stays below the titlebar (safe area).
+            if sidebarVisible, !window.styleMask.contains(.fullSizeContentView) {
+                window.styleMask.insert(.fullSizeContentView)
+            }
             for accessory in window.titlebarAccessoryViewControllers {
                 // Ghostty tags the tab bar accessory itself; only the main
                 // window's accessory actually contains the NSTabBar view.

@@ -87,7 +87,7 @@ private struct AgentSidebarRail: View {
         }
         .frame(width: AgentSidebarModel.collapsedWidth)
         .frame(maxHeight: .infinity)
-        .background { AgentSidebarBackground() }
+        .background { AgentSidebarBackground().ignoresSafeArea(.container, edges: .top) }
     }
 }
 
@@ -155,7 +155,7 @@ struct AgentSidebarView: View {
                 .padding(.vertical, 6)
             }
         }
-        .background { AgentSidebarBackground() }
+        .background { AgentSidebarBackground().ignoresSafeArea(.container, edges: .top) }
         .onAppear { model.start() }
         .onChange(of: hideNativeTabBar) { _ in model.refresh() }
         .onChange(of: showRecent) { _ in model.refresh() }
