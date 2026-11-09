@@ -47,6 +47,13 @@ final class AgentSidebarModel: ObservableObject {
         willSet { objectWillChange.send() }
     }
 
+    /// Height of the titlebar strip above the window's content view, or 0
+    /// when the content view already reaches under the titlebar. The sidebar
+    /// backdrop is drawn this much taller so it covers the strip.
+    private(set) var titlebarInset: CGFloat = 0 {
+        willSet { objectWillChange.send() }
+    }
+
     private struct WeakWindow {
         weak var window: NSWindow?
     }
@@ -351,6 +358,12 @@ final class AgentSidebarModel: ObservableObject {
                 // An opaque titlebar would paint over the backdrop.
                 if !window.titlebarAppearsTransparent {
                     window.titlebarAppearsTransparent = true
+                }
+                if let contentView = window.contentView, window === NSApp.keyWindow || titlebarInset == 0 {
+                    let inset = max(0, (window.frame.height - contentView.frame.height).rounded())
+                    if inset != titlebarInset, inset < 100 {
+                        titlebarInset = inset
+                    }
                 }
             }
             for accessory in window.titlebarAccessoryViewControllers {

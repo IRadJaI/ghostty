@@ -156,7 +156,11 @@ struct AgentSidebarView: View {
                 .padding(.vertical, 6)
             }
         }
-        .background { AgentSidebarBackground().ignoresSafeArea(.container, edges: .top) }
+        .background {
+            AgentSidebarBackground()
+                .padding(.top, -model.titlebarInset)
+                .ignoresSafeArea(.container, edges: .top)
+        }
         .onAppear {
             resolveWindow()
             model.start()
