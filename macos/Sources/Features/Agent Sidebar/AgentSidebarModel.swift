@@ -435,6 +435,24 @@ final class AgentSidebarModel: ObservableObject {
         }
     }
 
+    /// Opens the agent pane (chat with the agent) to the right of the
+    /// focused terminal of `window`.
+    func openAgentPane(from window: NSWindow?) {
+        let controller = (window?.windowController as? TerminalController)
+            ?? (NSApp.keyWindow?.windowController as? TerminalController)
+        guard let surface = controller?.focusedSurface else { return }
+        let command = UserDefaults.standard.string(forKey: AgentSidebarDefaults.agentPaneCommand)
+            ?? AgentSidebarDefaults.defaultAgentPaneCommand
+        _ = try? AgentControlOperations.perform("split_pane", [
+            "target": AgentControlOperations.paneID(surface),
+            "direction": "right",
+            "command": command,
+            "agent_pane": true,
+            "focus": true,
+            "wait": true,
+        ])
+    }
+
     /// Asks for a new tab title with Ghostty's own prompt.
     func rename(_ tab: Tab) {
         guard let window = window(for: tab),

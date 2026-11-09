@@ -24,6 +24,7 @@ final class AgentSidebarMenu: NSObject, NSMenuItemValidation {
         menu.addItem(item("Show Tab Sidebar", #selector(toggleSidebar(_:)), key: "s"))
         menu.addItem(item("Show Agent Tabs Only", #selector(toggleAgentsOnly(_:)), key: "g"))
         menu.addItem(item("Go to Next Tab Needing Attention", #selector(nextAttention(_:)), key: "a"))
+        menu.addItem(item("Open Agent Pane", #selector(openAgentPane(_:)), key: "p"))
     }
 
     private func item(_ title: String, _ action: Selector, key: String) -> NSMenuItem {
@@ -39,6 +40,10 @@ final class AgentSidebarMenu: NSObject, NSMenuItemValidation {
 
     @objc func toggleAgentsOnly(_ sender: Any?) {
         toggle(AgentSidebarDefaults.agentsOnly)
+    }
+
+    @objc func openAgentPane(_ sender: Any?) {
+        AgentSidebarModel.shared.openAgentPane(from: NSApp.keyWindow)
     }
 
     @objc func nextAttention(_ sender: Any?) {

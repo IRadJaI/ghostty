@@ -1653,6 +1653,12 @@ extension Ghostty {
                 guard let surface = target.target.surface else { return }
                 guard let surfaceView = self.surfaceView(from: surface) else { return }
 
+                // agent-sidebar: report the exit code to agent tooling.
+                let agentExitCode = Int(v.exit_code)
+                DispatchQueue.main.async {
+                    AgentControlOperations.commandFinished(surface: surfaceView, exitCode: agentExitCode)
+                }
+
                 // Determine if we even care about command finish notifications
                 guard let config = (NSApplication.shared.delegate as? AppDelegate)?.ghostty.config else { return }
                 switch config.notifyOnCommandFinish {

@@ -241,6 +241,15 @@ struct AgentSidebarView: View {
             Spacer(minLength: 4)
 
             Button {
+                model.openAgentPane(from: windowProvider())
+            } label: {
+                Image(systemName: "sparkles")
+            }
+            .buttonStyle(.plain)
+            .help("Open agent pane")
+            .accessibilityLabel("Open agent pane")
+
+            Button {
                 model.newTab(from: windowProvider())
             } label: {
                 Image(systemName: "plus")

@@ -212,6 +212,10 @@ class AppDelegate: NSObject,
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // agent-sidebar: control socket for agent tooling; started before any
+        // terminal is spawned so shells inherit GHOSTTY_AGENT_SOCKET.
+        AgentControlServer.shared.start()
+
         // System settings overrides
         UserDefaults.ghostty.register(defaults: [
             // Disable this so that repeated key events make it through to our terminal views.

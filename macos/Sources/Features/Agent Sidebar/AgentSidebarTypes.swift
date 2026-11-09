@@ -19,6 +19,11 @@ enum AgentSidebarDefaults {
     static let showGitBranch = "AgentSidebar.showGitBranch"
     static let showGitChanges = "AgentSidebar.showGitChanges"
     static let hideNativeTabBar = "AgentSidebar.hideNativeTabBar"
+    static let agentPaneCommand = "AgentSidebar.agentPaneCommand"
+
+    /// Runs the WTA helper (chat with the agent, error fixes) in a login
+    /// shell so `wta-ghostty` and `npx` are found on the user's PATH.
+    static let defaultAgentPaneCommand = "/bin/zsh -lc 'exec wta-ghostty helper'"
 
     static let registration: [String: Any] = [
         visible: true,
