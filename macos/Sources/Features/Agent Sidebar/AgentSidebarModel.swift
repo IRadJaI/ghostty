@@ -36,12 +36,18 @@ final class AgentSidebarModel: ObservableObject {
         }
     }
 
-    @Published private(set) var tabs: [Tab] = []
-    @Published private(set) var recentSessions: [AgentRecentSession] = []
+    /// Sent by hand before every change below. The publisher that
+    /// `@Published` synthesizes never fired for this class in the built app
+    /// (observed with the CI screenshots), so the model does not rely on it.
+    let objectWillChange = ObservableObjectPublisher()
 
-    /// Diagnostics shown in demo mode (`GHOSTTY_AGENT_SIDEBAR_DEMO=1`).
-    @Published private(set) var debugInfo = ""
-    private var refreshCount = 0
+    private(set) var tabs: [Tab] = [] {
+        willSet { objectWillChange.send() }
+    }
+
+    private(set) var recentSessions: [AgentRecentSession] = [] {
+        willSet { objectWillChange.send() }
+    }
 
     private struct WeakWindow {
         weak var window: NSWindow?
@@ -178,13 +184,6 @@ final class AgentSidebarModel: ObservableObject {
         }
 
         windows = liveWindows
-        if AgentSidebarDemo.enabled {
-            refreshCount += 1
-            let classes = NSApp.windows.map {
-                "\(type(of: $0))/\($0.windowController.map { String(describing: type(of: $0)) } ?? "nil")"
-            }
-            debugInfo = "refresh \(refreshCount), tabs \(result.count), windows: \(classes.joined(separator: ", "))"
-        }
         if AgentSidebarDemo.enabled, let groupID = result.first?.groupID {
             result = AgentSidebarDemo.tabs(groupID: groupID)
             if recentSessions.isEmpty {

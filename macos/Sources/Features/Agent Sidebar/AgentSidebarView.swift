@@ -110,7 +110,6 @@ struct AgentSidebarView: View {
     @State private var searching = false
     @State private var query = ""
     @State private var recentExpanded = AgentSidebarDemo.enabled
-    @State private var debugEvents = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -119,21 +118,6 @@ struct AgentSidebarView: View {
                 searchField
             }
             Divider()
-            if AgentSidebarDemo.enabled {
-                // Temporary diagnostics: which update paths reach this view.
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("observed: \(model.debugInfo.isEmpty ? "-" : model.debugInfo)")
-                    Text("willChange events: \(debugEvents)")
-                    TimelineView(.periodic(from: .now, by: 1.0)) { context in
-                        Text("timeline \(context.date.formatted(date: .omitted, time: .standard)): "
-                            + "\(AgentSidebarModel.shared.debugInfo.prefix(40))")
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(.red)
-                .padding(6)
-                .onReceive(model.objectWillChange) { _ in debugEvents += 1 }
-            }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(visibleTabs) { tab in
