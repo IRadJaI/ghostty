@@ -411,8 +411,19 @@ final class AgentSessionRestore {
         guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
         let model = AgentSidebarModel.shared
 
+        var open = plan.open
         for (tab, saved) in plan.resume {
-            guard let command = Self.resumeCommand(saved), model.hasShellInFront(tab),
+            guard let resume = Self.resumeCommand(saved) else { continue }
+            var command = resume
+            if let cwd = Self.sessionDirectory(saved), cwd != tab.pwd {
+                // A directory that cannot be typed safely gets a tab of its own.
+                guard let quoted = Self.shellQuoted(cwd) else {
+                    open.append(saved)
+                    continue
+                }
+                command = "cd -- \(quoted) && " + command
+            }
+            guard model.hasShellInFront(tab),
                   let controller = model.window(for: tab)?.windowController as? TerminalController,
                   let surface = controller.focusedSurface?.surfaceModel
             else { continue }
@@ -422,9 +433,9 @@ final class AgentSessionRestore {
         }
 
         var after = window
-        for tab in plan.open {
+        for tab in open {
             var config = Ghostty.SurfaceConfiguration()
-            if let cwd = tab.cwd, FileManager.default.fileExists(atPath: cwd) {
+            if let cwd = Self.sessionDirectory(tab) ?? tab.cwd, FileManager.default.fileExists(atPath: cwd) {
                 config.workingDirectory = cwd
             }
             if let command = Self.resumeCommand(tab) {
@@ -436,19 +447,30 @@ final class AgentSessionRestore {
         }
     }
 
-    /// `cd` to where the session worked, then resume it. Nil without a valid id.
+    /// Nil without a valid id: it comes from a file, so only what an id contains is allowed.
     private static func resumeCommand(_ tab: SavedTab) -> String? {
-        // The id comes from a file; allow only what a session id contains.
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         guard let session = tab.session, !session.isEmpty,
               session.unicodeScalars.allSatisfy({ allowed.contains($0) })
         else { return nil }
-        var command = "claude --resume \(session)"
-        if let cwd = tab.sessionCwd, cwd != tab.cwd, FileManager.default.fileExists(atPath: cwd) {
-            let quoted = "'" + cwd.replacingOccurrences(of: "'", with: "'\\''") + "'"
-            command = "cd -- \(quoted) && " + command
-        }
-        return command
+        return "claude --resume \(session)"
+    }
+
+    /// Where the session worked, when that directory still exists.
+    private static func sessionDirectory(_ tab: SavedTab) -> String? {
+        guard tab.session != nil, let cwd = tab.sessionCwd, cwd.hasPrefix("/"),
+              FileManager.default.fileExists(atPath: cwd)
+        else { return nil }
+        return cwd
+    }
+
+    /// Single-quoted for any shell, or nil when the path has a character that shells treat differently inside quotes.
+    private static func shellQuoted(_ path: String) -> String? {
+        let unsafe = CharacterSet.controlCharacters
+            .union(.newlines)
+            .union(CharacterSet(charactersIn: "'\\"))
+        guard path.unicodeScalars.allSatisfy({ !unsafe.contains($0) }) else { return nil }
+        return "'\(path)'"
     }
 
     private func finish() {
