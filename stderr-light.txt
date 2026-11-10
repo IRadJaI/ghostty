@@ -1,0 +1,6 @@
+[sentry] INFO using database path "/Users/runner/.cache/ghostty/sentry"
+[sentry] WARN the provided DSN "" is not valid
+[sentry] DEBUG starting backend
+[sentry] DEBUG processing and pruning old runs
+[sentry] DEBUG sending envelope
+[sentry] DEBUG serializing envelope into buffer
