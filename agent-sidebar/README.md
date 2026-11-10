@@ -124,9 +124,9 @@ zig build -Demit-macos-app=false
 # 2. Приложение. Debug-сборка имеет отдельный bundle id
 #    (com.mitchellh.ghostty.debug) и не мешает установленному Ghostty.
 xcodebuild -project macos/Ghostty.xcodeproj -scheme Ghostty \
-  -configuration Debug SYMROOT="$PWD/macos/build" build
+  -configuration Debug SYMROOT="$PWD/../build.noindex" build
 
-open macos/build/Debug/Ghostty.app
+open ../build.noindex/Debug/Ghostty.app
 ```
 
 Debug-сборка медленная и показывает жёлтую плашку — это штатное поведение
@@ -135,9 +135,9 @@ Ghostty. Для повседневного использования собир
 ```bash
 zig build -Doptimize=ReleaseFast -Demit-macos-app=false -Dxcframework-target=native
 xcodebuild -project macos/Ghostty.xcodeproj -scheme Ghostty \
-  -configuration ReleaseLocal SYMROOT="$PWD/macos/build" \
+  -configuration ReleaseLocal SYMROOT="$PWD/../build.noindex" \
   ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
-ditto "macos/build/ReleaseLocal/Ghostty Agents.app" "/Applications/Ghostty Agents.app"
+ditto "../build.noindex/ReleaseLocal/Ghostty Agents.app" "/Applications/Ghostty Agents.app"
 ```
 
 Релизная сборка форка — отдельное приложение «Ghostty Agents»
@@ -145,6 +145,10 @@ ditto "macos/build/ReleaseLocal/Ghostty Agents.app" "/Applications/Ghostty Agent
 же конфиг. Обновления из upstream в ней выключены, обновляется пересборкой.
 `-Dxcframework-target=native` и `ARCHS=arm64` собирают только под
 архитектуру этого Mac; без них нужна универсальная сборка ядра.
+
+Продукты сборки лежат вне репозитория, в каталоге с суффиксом `.noindex`:
+Spotlight такие каталоги не индексирует, и копии приложения из папки сборки
+не появляются в поиске рядом с установленным.
 
 Если `xcrun metal` не находится, поставьте компонент Xcode:
 `xcodebuild -downloadComponent MetalToolchain`.
