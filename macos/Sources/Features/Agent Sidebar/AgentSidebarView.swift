@@ -524,7 +524,7 @@ private struct AgentStatusBar: View {
                     Text(agent.displayName)
                         .fontWeight(.medium)
                     if let state = tab.state {
-                        Text(state.label)
+                        Text(tab.statusText ?? state.label)
                             .foregroundStyle(AgentSidebarStyle.color(for: state))
                     }
                     Spacer(minLength: 8)
@@ -629,7 +629,9 @@ private struct AgentSidebarRailItem: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(spacing: 0) {
-                AgentSidebarIcon(agent: tab.agent, state: tab.state, badge: badge)
+                AgentSidebarIcon(
+                    agent: tab.agent, state: tab.state, badge: badge,
+                    badgeHollow: !tab.needsAttention && !tab.unread)
                 Text(monogram.letters)
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
@@ -675,10 +677,7 @@ private struct AgentSidebarRailItem: View {
     }
 
     private var subtitle: String {
-        if let state = tab.state {
-            if state == .waiting, let message = tab.message, !message.isEmpty { return message }
-            return state.label
-        }
+        if let status = tab.statusText { return status }
         return tab.pwd.map { AgentSidebarFormat.abbreviate(path: $0) } ?? ""
     }
 
@@ -686,16 +685,16 @@ private struct AgentSidebarRailItem: View {
         AgentSidebarMonogram(tab: tab)
     }
 
-    /// Orange: waits for the user or rang the bell. Green: finished unseen.
+    /// Orange: waits for the user or rang the bell. Green: finished, a ring once seen.
     private var badge: Color? {
         if tab.needsAttention { return .orange }
-        return tab.unread ? AgentSidebarStyle.color(for: .done) : nil
+        return tab.unread || tab.state == .done ? AgentSidebarStyle.color(for: .done) : nil
     }
 
     private var tooltip: String {
         var parts = [tab.title.isEmpty ? "Terminal" : tab.title]
-        if let state = tab.state {
-            parts.append(state.label)
+        if let status = tab.statusText {
+            parts.append(status)
         }
         if let pwd = tab.pwd, !pwd.isEmpty {
             parts.append(AgentSidebarFormat.abbreviate(path: pwd))
@@ -732,7 +731,7 @@ private struct AgentSidebarRow: View {
                     .truncationMode(.tail)
 
                 if options.showStatus, let state = tab.state {
-                    Text(statusText(state))
+                    Text(tab.statusText ?? state.label)
                         .font(.caption)
                         .foregroundStyle(AgentSidebarStyle.color(for: state))
                         .lineLimit(1)
@@ -808,12 +807,6 @@ private struct AgentSidebarRow: View {
         return title.isEmpty ? "Terminal" : title
     }
 
-    private func statusText(_ state: AgentState) -> String {
-        if state == .waiting, let message = tab.message, !message.isEmpty {
-            return message
-        }
-        return state.label
-    }
 
     /// `repo · branch · ±3`, limited to the parts the user enabled.
     private var gitLine: String? {
@@ -895,6 +888,8 @@ private struct AgentSidebarIcon: View {
     let state: AgentState?
     /// A dot on the icon, where there is no room for one next to the title.
     var badge: Color?
+    /// A ring instead of a dot: the state has been seen.
+    var badgeHollow = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -903,6 +898,9 @@ private struct AgentSidebarIcon: View {
                     ProgressView()
                         .controlSize(.small)
                         .scaleEffect(0.75)
+                } else if state == .background {
+                    Image(systemName: "hourglass")
+                        .foregroundStyle(AgentSidebarStyle.color(for: .background))
                 } else if let agent {
                     glyph(for: agent)
                 } else {
@@ -913,10 +911,15 @@ private struct AgentSidebarIcon: View {
             .frame(width: 20, height: 20)
 
             if let badge {
-                Circle()
-                    .fill(badge)
-                    .frame(width: 7, height: 7)
-                    .offset(x: 2, y: 2)
+                Group {
+                    if badgeHollow {
+                        Circle().strokeBorder(badge, lineWidth: 1.5)
+                    } else {
+                        Circle().fill(badge)
+                    }
+                }
+                .frame(width: 7, height: 7)
+                .offset(x: 2, y: 2)
             }
         }
         .accessibilityHidden(true)
@@ -952,6 +955,7 @@ private enum AgentSidebarStyle {
         switch state {
         case .working: return .blue
         case .waiting: return .orange
+        case .background: return .teal
         case .done: return .green
         case .idle: return .secondary
         }

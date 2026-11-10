@@ -40,6 +40,15 @@ final class AgentSidebarModel: ObservableObject {
         var unread = false
         var git: AgentGitInfo?
 
+        /// The state in words; the agent's own message where it says more.
+        var statusText: String? {
+            guard let state else { return nil }
+            if state == .waiting || state == .background, let message, !message.isEmpty {
+                return message
+            }
+            return state.label
+        }
+
         /// The agent is blocked on the user, or the terminal rang its bell.
         var needsAttention: Bool {
             state == .waiting || hasBell

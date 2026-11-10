@@ -124,6 +124,8 @@ enum AgentState: String {
     case working
     /// The agent is blocked on the user (permission prompt or a question).
     case waiting
+    /// The turn ended, but background shells, subagents or wake-ups are pending.
+    case background
     /// The agent finished its turn.
     case done
     /// A session exists but nothing has been asked yet.
@@ -132,8 +134,9 @@ enum AgentState: String {
     /// Higher means more important when several panes share one tab.
     var priority: Int {
         switch self {
-        case .waiting: return 4
-        case .working: return 3
+        case .waiting: return 5
+        case .working: return 4
+        case .background: return 3
         case .done: return 2
         case .idle: return 1
         }
@@ -143,6 +146,7 @@ enum AgentState: String {
         switch self {
         case .working: return "Working…"
         case .waiting: return "Needs you"
+        case .background: return "Background work"
         case .done: return "Done"
         case .idle: return "Idle"
         }
@@ -176,14 +180,40 @@ struct AgentHookStatus: Equatable {
            ["idle_prompt", "auth_success", "agent_completed"].contains(type) || type.hasPrefix("quota_") {
             shown = .done
         }
+        // A finished turn with work still in flight is not "done" yet.
+        var message = payload?["message"] as? String
+        if shown == .done, let pending = pendingWork(payload) {
+            shown = .background
+            message = pending
+        }
         return AgentHookStatus(
             agent: (root["agent"] as? String).flatMap { AgentKind(rawValue: $0) },
             state: shown,
             timestamp: Date(timeIntervalSince1970: seconds),
             sessionID: payload?["session_id"] as? String,
             cwd: payload?["cwd"] as? String,
-            message: payload?["message"] as? String
+            message: message
         )
+    }
+
+    /// `Waiting for 1 shell, 2 subagents`, from the Stop hook's `background_tasks` and `session_crons`.
+    private static func pendingWork(_ payload: [String: Any]?) -> String? {
+        let tasks = payload?["background_tasks"] as? [[String: Any]] ?? []
+        if !tasks.isEmpty {
+            var counts: [(type: String, count: Int)] = []
+            for task in tasks {
+                let type = task["type"] as? String ?? "task"
+                if let index = counts.firstIndex(where: { $0.type == type }) {
+                    counts[index].count += 1
+                } else {
+                    counts.append((type, 1))
+                }
+            }
+            let parts = counts.map { "\($0.count) \($0.type)\($0.count == 1 ? "" : "s")" }
+            return "Waiting for " + parts.joined(separator: ", ")
+        }
+        let crons = payload?["session_crons"] as? [[String: Any]] ?? []
+        return crons.isEmpty ? nil : "Waiting for a scheduled wake-up"
     }
 }
 

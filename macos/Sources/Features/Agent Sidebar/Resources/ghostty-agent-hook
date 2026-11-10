@@ -45,6 +45,15 @@ case "$payload" in
   *) payload="null" ;;
 esac
 
+# Notifications that ask nothing of the user must not replace the state.
+if [ "$state" = "waiting" ]; then
+  case "$payload" in
+    *'"notification_type":"idle_prompt"'* | *'"notification_type":"auth_success"'* | \
+    *'"notification_type":"agent_completed"'* | *'"notification_type":"quota_'* | \
+    *'"notification_type":"elicitation_complete"'* | *'"notification_type":"elicitation_response"'*) exit 0 ;;
+  esac
+fi
+
 # Hooks run without a controlling terminal of their own, so walk up the
 # process tree until an ancestor (the agent or its shell) has one.
 pid=$$
