@@ -892,7 +892,8 @@ private struct AgentSidebarIcon: View {
     var badgeHollow = false
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        // Top corner: the monogram chip sits right under the icon.
+        ZStack(alignment: .topTrailing) {
             Group {
                 if state == .working {
                     ProgressView()
@@ -913,13 +914,13 @@ private struct AgentSidebarIcon: View {
             if let badge {
                 Group {
                     if badgeHollow {
-                        Circle().strokeBorder(badge, lineWidth: 1.5)
+                        Circle().strokeBorder(badge, lineWidth: 2)
                     } else {
                         Circle().fill(badge)
                     }
                 }
-                .frame(width: 7, height: 7)
-                .offset(x: 2, y: 2)
+                .frame(width: 8, height: 8)
+                .offset(x: 4, y: -2)
             }
         }
         .accessibilityHidden(true)
