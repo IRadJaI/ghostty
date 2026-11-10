@@ -112,6 +112,74 @@ enum AgentSidebarTitlebarBackdrop {
     }
 }
 
+/// Whether the collapsed sidebar is widened. Shared: every tab is its own window.
+@MainActor
+final class AgentSidebarPeek: ObservableObject {
+    static let shared = AgentSidebarPeek()
+
+    @Published private(set) var open = false
+
+    private var opening: DispatchWorkItem?
+    private var watcher: Timer?
+
+    /// Opens after a short delay, so a pointer crossing the rail does not.
+    func pointerEntered() {
+        guard !open, opening == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.opening = nil
+            if self.pointerIsOverSidebar(width: AgentSidebarModel.collapsedWidth + 1) {
+                self.setOpen(true)
+            }
+        }
+        opening = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    func close() {
+        opening?.cancel()
+        opening = nil
+        setOpen(false)
+    }
+
+    private func setOpen(_ value: Bool) {
+        guard open != value else { return }
+        open = value
+        watcher?.invalidate()
+        watcher = nil
+        guard value else { return }
+        // Hover events do not survive a switch to another tab's window, so
+        // the pointer is polled while the rail is open.
+        var outside = 0
+        let timer = Timer(timeInterval: 0.15, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.open else { return }
+                let width = AgentSidebarModel.clampedWidth(
+                    UserDefaults.standard.double(forKey: AgentSidebarDefaults.width))
+                outside = self.pointerIsOverSidebar(width: width) ? 0 : outside + 1
+                if outside >= 2 {
+                    self.setOpen(false)
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        watcher = timer
+    }
+
+    private func pointerIsOverSidebar(width: CGFloat) -> Bool {
+        guard NSApp.isActive,
+              let window = NSApp.keyWindow, window.windowController is TerminalController,
+              let content = window.contentView
+        else { return false }
+        // An open menu or a sheet keeps the rail as it is.
+        if window.attachedSheet != nil || RunLoop.main.currentMode == .eventTracking { return true }
+        let area = window.convertToScreen(content.convert(content.bounds, to: nil))
+        let pointer = NSEvent.mouseLocation
+        return pointer.x >= area.minX && pointer.x <= area.minX + width
+            && pointer.y >= area.minY && pointer.y <= area.maxY
+    }
+}
+
 /// An outline around the pane whose agent waits for the user.
 @MainActor
 enum AgentPaneRing {

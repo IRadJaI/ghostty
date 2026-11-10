@@ -21,20 +21,11 @@ struct AgentSidebarContainer<Content: View>: View {
 
     @AppStorage(AgentSidebarDefaults.peekOnHover) private var peekOnHover = true
     /// The collapsed sidebar is widened over the terminal while hovered.
-    @State private var hovered = false
+    @ObservedObject private var peek = AgentSidebarPeek.shared
     /// Keeps the rail widened without a pointer, for UI snapshots.
     @AppStorage("AgentSidebarForcePeek") private var forcePeek = false
-    @State private var peekWork: DispatchWorkItem?
 
-    private var peeking: Bool { hovered || forcePeek }
-
-    /// Delayed, so that a pointer crossing the rail does not open it.
-    private func setPeek(_ show: Bool, after delay: TimeInterval) {
-        peekWork?.cancel()
-        let work = DispatchWorkItem { hovered = show }
-        peekWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
-    }
+    private var peeking: Bool { peek.open || forcePeek }
 
     private var separator: some View {
         Rectangle()
@@ -75,16 +66,15 @@ struct AgentSidebarContainer<Content: View>: View {
                     .overlay(alignment: .trailing) { separator }
                     .shadow(color: .black.opacity(peeking ? 0.35 : 0), radius: 12, x: 4)
                     .onHover { inside in
-                        if peekOnHover || !inside {
-                            setPeek(inside, after: inside ? 0.25 : 0.3)
+                        if inside, peekOnHover {
+                            peek.pointerEntered()
                         }
                     }
             }
         }
         .animation(.easeOut(duration: 0.12), value: peeking)
         .onChange(of: visible) { _ in
-            peekWork?.cancel()
-            hovered = false
+            peek.close()
             AgentSidebarModel.shared.syncWindowChrome()
         }
         .onChange(of: width) { _ in AgentSidebarModel.shared.syncWindowChrome() }
