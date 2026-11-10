@@ -43,7 +43,8 @@ final class AgentSidebarModel: ObservableObject {
         /// The state in words; the agent's own message where it says more.
         var statusText: String? {
             guard let state else { return nil }
-            if state == .waiting || state == .background, let message, !message.isEmpty {
+            // "Done" carries a note only when the hook parser wrote one.
+            if state != .working, state != .idle, let message, !message.isEmpty {
                 return message
             }
             return state.label

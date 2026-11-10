@@ -182,9 +182,14 @@ struct AgentHookStatus: Equatable {
         }
         // A finished turn with work still in flight is not "done" yet.
         var message = payload?["message"] as? String
-        if shown == .done, let pending = pendingWork(payload) {
-            shown = .background
-            message = pending
+        if shown == .done {
+            let pending = pendingWork(payload)
+            if let work = pending.work {
+                shown = .background
+                message = work
+            } else {
+                message = pending.watching.map { "Done · " + $0 }
+            }
         }
         return AgentHookStatus(
             agent: (root["agent"] as? String).flatMap { AgentKind(rawValue: $0) },
@@ -196,24 +201,29 @@ struct AgentHookStatus: Equatable {
         )
     }
 
-    /// `Waiting for 1 shell, 2 subagents`, from the Stop hook's `background_tasks` and `session_crons`.
-    private static func pendingWork(_ payload: [String: Any]?) -> String? {
+    /// What a finished turn left behind, from the Stop hook's `background_tasks` and `session_crons`.
+    /// Work is something that will finish; a monitor or a scheduled wake-up only watches.
+    private static func pendingWork(_ payload: [String: Any]?) -> (work: String?, watching: String?) {
         let tasks = payload?["background_tasks"] as? [[String: Any]] ?? []
-        if !tasks.isEmpty {
+        func summary(_ types: [String]) -> String? {
             var counts: [(type: String, count: Int)] = []
-            for task in tasks {
-                let type = task["type"] as? String ?? "task"
+            for type in types {
                 if let index = counts.firstIndex(where: { $0.type == type }) {
                     counts[index].count += 1
                 } else {
                     counts.append((type, 1))
                 }
             }
-            let parts = counts.map { "\($0.count) \($0.type)\($0.count == 1 ? "" : "s")" }
-            return "Waiting for " + parts.joined(separator: ", ")
+            guard !counts.isEmpty else { return nil }
+            return counts.map { "\($0.count) \($0.type)\($0.count == 1 ? "" : "s")" }.joined(separator: ", ")
         }
-        let crons = payload?["session_crons"] as? [[String: Any]] ?? []
-        return crons.isEmpty ? nil : "Waiting for a scheduled wake-up"
+        let types = tasks.map { $0["type"] as? String ?? "task" }
+        let work = summary(types.filter { $0 != "monitor" }).map { "Waiting for " + $0 }
+        var watching = summary(types.filter { $0 == "monitor" })
+        if watching == nil, !(payload?["session_crons"] as? [[String: Any]] ?? []).isEmpty {
+            watching = "scheduled wake-up"
+        }
+        return (work, watching)
     }
 }
 
