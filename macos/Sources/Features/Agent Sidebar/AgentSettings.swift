@@ -504,6 +504,18 @@ private struct AgentSettingsBehavior: View {
             }
         }
 
+        Section {
+            Picker("Pane drag handle", selection: store.text("drag-handle", default: "auto")) {
+                Text("When the pointer is near the top").tag("auto")
+                Text("Always").tag("always")
+                Text("Never").tag("never")
+            }
+        } header: {
+            Text("Splits")
+        } footer: {
+            Text("The three dots at the top of a pane. Drag them to rearrange splits or to move a pane to a new window.")
+        }
+
         Section("Mouse and keyboard") {
             Picker("Copy on select", selection: store.text("copy-on-select", default: "true")) {
                 Text("Off").tag("false")
