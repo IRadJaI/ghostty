@@ -264,6 +264,7 @@ enum AgentControlOperations {
                 "backend": "ghostty",
                 "protocol_version": "2.4-ghostty",
                 "socket": AgentControlServer.shared.socketPath ?? "",
+                "dock_badge": NSApp.dockTile.badgeLabel ?? "",
             ]
 
         case "list_windows":

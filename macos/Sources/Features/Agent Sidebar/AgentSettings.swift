@@ -657,7 +657,10 @@ private struct AgentSettingsAgents: View {
 
     @AppStorage(AgentSidebarDefaults.notifyWaiting) private var notifyWaiting = true
     @AppStorage(AgentSidebarDefaults.notifyDone) private var notifyDone = true
-    @AppStorage(AgentSidebarDefaults.notifySound) private var notifySound = true
+    @AppStorage(AgentSidebarDefaults.soundWaiting) private var soundWaiting = "Ping"
+    @AppStorage(AgentSidebarDefaults.soundDone) private var soundDone = "Glass"
+    @AppStorage(AgentSidebarDefaults.dockBadge) private var dockBadge = true
+    @AppStorage(AgentSidebarDefaults.paneRing) private var paneRing = true
 
     @State private var hooksInstalled = false
     @State private var hooksMessage: String?
@@ -704,15 +707,30 @@ private struct AgentSettingsAgents: View {
 
         Section {
             Toggle("When an agent needs you", isOn: $notifyWaiting)
+            soundPicker("Sound", $soundWaiting)
+                .disabled(!notifyWaiting)
             Toggle("When an agent finishes", isOn: $notifyDone)
-            Toggle("Play a sound", isOn: $notifySound)
-                .disabled(!notifyWaiting && !notifyDone)
+            soundPicker("Sound", $soundDone)
+                .disabled(!notifyDone)
         } header: {
             Text("Notifications")
         } footer: {
             Text("""
                 Shown only for tabs you are not looking at; clicking one opens its tab. \
                 Needs the status hooks above and notifications allowed for Ghostty in System Settings.
+                """)
+        }
+
+        Section {
+            Toggle("Count on the Dock icon", isOn: $dockBadge)
+            Toggle("Outline the pane where an agent waits", isOn: $paneRing)
+        } header: {
+            Text("Attention")
+        } footer: {
+            Text("""
+                The Dock icon counts the tabs that wait for you or finished while you were away; \
+                such a tab keeps a dot in the sidebar until you open it. \
+                The outline appears in tabs with splits. ⌃⌘A goes to the next of these tabs.
                 """)
         }
 
@@ -734,6 +752,24 @@ private struct AgentSettingsAgents: View {
                 What starts in the split opened by the ✨ button in the sidebar or by ⌃⌘P. \
                 When a command fails, “Fix” in the sidebar opens Claude Code with the error.
                 """)
+        }
+    }
+
+    private static let sounds: [String] = {
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? []
+        return files.filter { $0.hasSuffix(".aiff") }.map { String($0.dropLast(5)) }.sorted()
+    }()
+
+    private func soundPicker(_ title: String, _ selection: Binding<String>) -> some View {
+        Picker(title, selection: Binding(
+            get: { selection.wrappedValue },
+            set: { name in
+                selection.wrappedValue = name
+                NSSound(named: name)?.play()
+            })) {
+            Text("None").tag("")
+            Divider()
+            ForEach(Self.sounds, id: \.self) { Text($0).tag($0) }
         }
     }
 

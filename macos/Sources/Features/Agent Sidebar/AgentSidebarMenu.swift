@@ -71,7 +71,7 @@ final class AgentSidebarMenu: NSObject, NSMenuItemValidation {
             menuItem.state = defaults.bool(forKey: AgentSidebarDefaults.agentsOnly) ? .on : .off
             return defaults.bool(forKey: AgentSidebarDefaults.visible)
         case #selector(nextAttention(_:)):
-            return AgentSidebarModel.shared.tabs.contains { $0.needsAttention }
+            return AgentSidebarModel.shared.tabs.contains { $0.needsAttention || $0.unread }
         default:
             return true
         }

@@ -34,6 +34,8 @@ final class AgentSidebarModel: ObservableObject {
         var sessionID: String?
         /// Token usage of the agent's session, when its transcript is found.
         var usage: AgentUsage?
+        /// The agent finished while the user was looking elsewhere.
+        var unread = false
         var git: AgentGitInfo?
 
         /// The agent is blocked on the user, or the terminal rang its bell.
@@ -278,6 +280,11 @@ final class AgentSidebarModel: ObservableObject {
                 let title = tabWindow.title
                 let pwd = controller.focusedSurface?.pwd ?? surfaces.first?.pwd
                 let agent = agentInfo(surfaces: surfaces, title: title, hooks: hooks)
+                // With one pane the sidebar already says where the agent is.
+                let ring = surfaces.count > 1 && defaults.bool(forKey: AgentSidebarDefaults.paneRing)
+                for surface in surfaces {
+                    AgentPaneRing.sync(surface, show: ring && agent.waiting.contains { $0 === surface })
+                }
                 var git: AgentGitInfo?
                 if wantGit, let pwd {
                     git = gitInfo(path: pwd, includeChanges: wantChanges)
@@ -310,6 +317,15 @@ final class AgentSidebarModel: ObservableObject {
                 autofix["demo-0"] = Autofix(state: "detected", paneID: "demo", summary: "Command failed (exit 127)")
             }
         }
+        if !AgentSidebarDemo.enabled {
+            AgentNotifier.shared.update(result) { tab in
+                NSApp.isActive && tab.isSelected && (windows[tab.id]?.window?.isKeyWindow ?? false)
+            }
+            let unread = AgentNotifier.shared.unread
+            for index in result.indices where unread.contains(result[index].stableID) {
+                result[index].unread = true
+            }
+        }
         if result != tabs {
             tabs = result
         }
@@ -326,9 +342,6 @@ final class AgentSidebarModel: ObservableObject {
         }
 
         if !AgentSidebarDemo.enabled {
-            AgentNotifier.shared.update(tabs) { tab in
-                NSApp.isActive && tab.isSelected && (windows[tab.id]?.window?.isKeyWindow ?? false)
-            }
             AgentSessionRestore.shared.update(tabs)
         }
 
@@ -344,6 +357,8 @@ final class AgentSidebarModel: ObservableObject {
         var state: AgentState?
         var message: String?
         var sessionID: String?
+        /// Panes whose agent waits for the user.
+        var waiting: [Ghostty.SurfaceView] = []
     }
 
     /// Works out which agent (if any) runs in a tab and what it is doing.
@@ -357,6 +372,7 @@ final class AgentSidebarModel: ObservableObject {
     ) -> AgentInfo {
         var best = AgentInfo()
         var bestPriority = -1
+        var waiting: [Ghostty.SurfaceView] = []
 
         for surface in surfaces {
             guard let surfaceModel = surface.surfaceModel else { continue }
@@ -375,6 +391,9 @@ final class AgentSidebarModel: ObservableObject {
             }
 
             guard let kind = hook?.agent ?? processAgent ?? (hook != nil ? AgentKind.claude : nil) else { continue }
+            if hook?.state == .waiting {
+                waiting.append(surface)
+            }
 
             let priority = hook?.state.priority ?? 0
             if priority > bestPriority {
@@ -386,6 +405,7 @@ final class AgentSidebarModel: ObservableObject {
         if best.kind == nil {
             best.kind = AgentKind.from(title: title)
         }
+        best.waiting = waiting
         return best
     }
 
@@ -562,7 +582,7 @@ final class AgentSidebarModel: ObservableObject {
         let current = tabs.firstIndex { windows[$0.id]?.window === keyWindow } ?? -1
         for offset in 1...tabs.count {
             let tab = tabs[(current + offset) % tabs.count]
-            if tab.needsAttention {
+            if tab.needsAttention || tab.unread {
                 select(tab)
                 return
             }

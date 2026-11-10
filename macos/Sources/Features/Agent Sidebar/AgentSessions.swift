@@ -25,6 +25,11 @@ enum AgentHookInstaller {
 
 // MARK: - Notifications
 
+/// Tabs that wait for the user or finished unseen, for the Dock icon.
+enum AgentBadge {
+    static var count = 0
+}
+
 /// Posts a system notification when an agent starts waiting for the user or finishes while the user is looking elsewhere.
 @MainActor
 final class AgentNotifier {
@@ -41,33 +46,58 @@ final class AgentNotifier {
     func update(_ tabs: [AgentSidebarModel.Tab], isFront: (AgentSidebarModel.Tab) -> Bool) {
         let defaults = UserDefaults.standard
         var states: [String: AgentState] = [:]
+        var waiting = 0
 
         for tab in tabs {
             guard !tab.stableID.isEmpty, let state = tab.state else { continue }
-            states[tab.stableID] = state
+            let id = tab.stableID
+            states[id] = state
+            let changed = primed && lastStates[id] != state
 
             let front = isFront(tab)
-            if front, notified.remove(tab.stableID) != nil {
-                UNUserNotificationCenter.current()
-                    .removeDeliveredNotifications(withIdentifiers: [Self.identifier(tab.stableID)])
+            if front {
+                unread.remove(id)
+                if notified.remove(id) != nil {
+                    UNUserNotificationCenter.current()
+                        .removeDeliveredNotifications(withIdentifiers: [Self.identifier(id)])
+                }
+            } else if changed, state == .done {
+                unread.insert(id)
             }
-            guard primed, !front, lastStates[tab.stableID] != state else { continue }
+            if state != .done {
+                unread.remove(id)
+            }
+            if state == .waiting {
+                waiting += 1
+            }
+            guard changed, !front else { continue }
 
             switch state {
             case .waiting where defaults.bool(forKey: AgentSidebarDefaults.notifyWaiting):
-                post(tab, title: "\(tab.agent?.displayName ?? "Agent") needs you")
+                post(tab, title: "\(tab.agent?.displayName ?? "Agent") needs you",
+                     sound: defaults.string(forKey: AgentSidebarDefaults.soundWaiting))
             case .done where defaults.bool(forKey: AgentSidebarDefaults.notifyDone):
-                post(tab, title: "\(tab.agent?.displayName ?? "Agent") finished")
+                post(tab, title: "\(tab.agent?.displayName ?? "Agent") finished",
+                     sound: defaults.string(forKey: AgentSidebarDefaults.soundDone))
             default:
                 break
             }
         }
 
+        unread.formIntersection(states.keys)
         lastStates = states
         primed = true
+
+        let count = defaults.bool(forKey: AgentSidebarDefaults.dockBadge) ? waiting + unread.count : 0
+        if count != AgentBadge.count {
+            AgentBadge.count = count
+            (NSApp.delegate as? AppDelegate)?.setDockBadge()
+        }
     }
 
-    private func post(_ tab: AgentSidebarModel.Tab, title: String) {
+    /// Tabs whose agent finished while the user was looking elsewhere.
+    private(set) var unread = Set<String>()
+    private func post(_ tab: AgentSidebarModel.Tab, title: String, sound: String?) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.subtitle = tab.title
@@ -76,8 +106,9 @@ final class AgentNotifier {
         } else if let pwd = tab.pwd, !pwd.isEmpty {
             content.body = AgentSidebarFormat.abbreviate(path: pwd)
         }
-        if UserDefaults.standard.bool(forKey: AgentSidebarDefaults.notifySound) {
-            content.sound = .default
+        if let sound, !sound.isEmpty {
+            // Found in /System/Library/Sounds.
+            content.sound = UNNotificationSound(named: UNNotificationSoundName("\(sound).aiff"))
         }
         content.userInfo = [Self.tabKey: tab.stableID]
         notified.insert(tab.stableID)
@@ -89,7 +120,7 @@ final class AgentNotifier {
             center.add(request)
         } else {
             askedPermission = true
-            center.requestAuthorization(options: [.alert, .sound]) { _, _ in
+            center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
                 center.add(request)
             }
         }

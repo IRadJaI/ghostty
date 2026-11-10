@@ -87,6 +87,32 @@ enum AgentSidebarTitlebarBackdrop {
     }
 }
 
+/// An outline around the pane whose agent waits for the user.
+@MainActor
+enum AgentPaneRing {
+    private static let identifier = NSUserInterfaceItemIdentifier("AgentPaneRing")
+
+    static func sync(_ surface: NSView, show: Bool) {
+        let existing = surface.subviews.first { $0.identifier == identifier }
+        guard show else {
+            existing?.removeFromSuperview()
+            return
+        }
+        guard existing == nil else { return }
+        let ring = RingView(frame: surface.bounds)
+        ring.identifier = identifier
+        ring.autoresizingMask = [.width, .height]
+        ring.wantsLayer = true
+        ring.layer?.borderWidth = 2
+        ring.layer?.borderColor = NSColor.systemOrange.cgColor
+        surface.addSubview(ring)
+    }
+
+    private final class RingView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
 /// The sidebar's trailing edge: draws the divider and resizes on drag.
 struct AgentSidebarResizeHandle: NSViewRepresentable {
     static let hitWidth: CGFloat = 7

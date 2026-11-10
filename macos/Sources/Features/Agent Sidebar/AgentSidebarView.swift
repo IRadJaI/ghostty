@@ -537,9 +537,9 @@ private struct AgentSidebarRailItem: View {
                 .fill(Color.primary.opacity(tab.isSelected ? 0.16 : (hovering ? 0.07 : 0)))
         )
         .overlay(alignment: .topTrailing) {
-            if tab.needsAttention {
+            if tab.needsAttention || tab.unread {
                 Circle()
-                    .fill(Color.orange)
+                    .fill(tab.needsAttention ? Color.orange : AgentSidebarStyle.color(for: .done))
                     .frame(width: 7, height: 7)
                     .padding(3)
             }
@@ -588,7 +588,7 @@ private struct AgentSidebarRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayTitle)
-                    .font(.callout.weight(tab.isSelected ? .semibold : .regular))
+                    .font(.callout.weight(tab.isSelected || tab.unread ? .semibold : .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -630,6 +630,12 @@ private struct AgentSidebarRow: View {
                     .frame(width: 8, height: 8)
                     .padding(.top, 5)
                     .accessibilityLabel("Needs attention")
+            } else if tab.unread {
+                Circle()
+                    .fill(AgentSidebarStyle.color(for: .done))
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 5)
+                    .accessibilityLabel("Finished, not seen yet")
             }
         }
         .padding(.horizontal, 8)

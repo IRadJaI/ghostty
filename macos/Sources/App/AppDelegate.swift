@@ -802,12 +802,14 @@ class AppDelegate: NSObject,
         _ = TerminalController.newTab(ghostty, from: window, withBaseConfig: config)
     }
 
-    private func setDockBadge() {
+    // agent-sidebar: not private, and the badge also counts agent tabs.
+    func setDockBadge() {
         let bellCount = NSApp.windows
             .compactMap { $0.windowController as? BaseTerminalController }
             .reduce(0) { $0 + ($1.bell ? 1 : 0) }
-        let wantsBadge = ghostty.config.bellFeatures.contains(.attention) && bellCount > 0
-        let label = wantsBadge ? (bellCount > 99 ? "99+" : String(bellCount)) : nil
+        let bells = ghostty.config.bellFeatures.contains(.attention) ? bellCount : 0
+        let total = bells + AgentBadge.count
+        let label = total > 0 ? (total > 99 ? "99+" : String(total)) : nil
         NSApp.dockTile.badgeLabel = label
         NSApp.dockTile.display()
     }

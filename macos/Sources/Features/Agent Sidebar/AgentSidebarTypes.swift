@@ -24,7 +24,11 @@ enum AgentSidebarDefaults {
     static let agentPaneCommand = "AgentSidebarAgentPaneCommand"
     static let notifyWaiting = "AgentSidebarNotifyWaiting"
     static let notifyDone = "AgentSidebarNotifyDone"
-    static let notifySound = "AgentSidebarNotifySound"
+    /// System sound names; empty for silence.
+    static let soundWaiting = "AgentSidebarSoundWaiting"
+    static let soundDone = "AgentSidebarSoundDone"
+    static let dockBadge = "AgentSidebarDockBadge"
+    static let paneRing = "AgentSidebarPaneRing"
     /// `ask`, `always` or `never`.
     static let restoreMode = "AgentSidebarRestoreMode"
     static let statusBar = "AgentSidebarStatusBar"
@@ -49,7 +53,10 @@ enum AgentSidebarDefaults {
         hideNativeTabBar: true,
         notifyWaiting: true,
         notifyDone: true,
-        notifySound: true,
+        soundWaiting: "Ping",
+        soundDone: "Glass",
+        dockBadge: true,
+        paneRing: true,
         restoreMode: "ask",
         statusBar: true,
     ]
