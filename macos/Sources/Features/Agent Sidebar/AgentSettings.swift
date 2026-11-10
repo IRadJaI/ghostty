@@ -486,20 +486,30 @@ private struct AgentSettingsThemePicker: View {
 
 private struct AgentSettingsBehavior: View {
     @ObservedObject var store: AgentSettingsStore
+    @AppStorage(AgentSidebarDefaults.restoreMode) private var restoreMode = "ask"
 
     var body: some View {
         Section {
-            Picker("Restore windows and tabs", selection: store.text("window-save-state", default: "default")) {
-                Text("Only after a crash").tag("default")
-                Text("Always").tag("always")
-                Text("Never").tag("never")
+            Picker("Previous tabs and Claude Code sessions", selection: $restoreMode) {
+                Text("Ask to restore").tag("ask")
+                Text("Restore without asking").tag("always")
+                Text("Do not restore").tag("never")
+            }
+            Picker("Window layout and splits", selection: store.text("window-save-state", default: "default")) {
+                Text("Restore only after a crash").tag("default")
+                Text("Always restore").tag("always")
+                Text("Never restore").tag("never")
             }
             Toggle("Quit when the last window closes",
                    isOn: store.flag("quit-after-last-window-closed", default: false))
         } header: {
             Text("Startup and quit")
         } footer: {
-            Text("Restoring brings back windows, tabs, splits and working directories. Running programs are not restarted.")
+            Text("""
+                The first option reopens the tabs in their directories and resumes the Claude Code \
+                sessions that were running in them. The second is Ghostty's own restoring of windows \
+                and splits; it does not restart programs.
+                """)
         }
 
         Section("Closing") {
@@ -588,6 +598,10 @@ private struct AgentSettingsAgents: View {
     @AppStorage(AgentSidebarDefaults.agentPaneCommand)
     private var agentPaneCommand = AgentSidebarDefaults.defaultAgentPaneCommand
 
+    @AppStorage(AgentSidebarDefaults.notifyWaiting) private var notifyWaiting = true
+    @AppStorage(AgentSidebarDefaults.notifyDone) private var notifyDone = true
+    @AppStorage(AgentSidebarDefaults.notifySound) private var notifySound = true
+
     @State private var hooksInstalled = false
     @State private var hooksMessage: String?
     @State private var customCommand = false
@@ -632,6 +646,20 @@ private struct AgentSettingsAgents: View {
         }
 
         Section {
+            Toggle("When an agent needs you", isOn: $notifyWaiting)
+            Toggle("When an agent finishes", isOn: $notifyDone)
+            Toggle("Play a sound", isOn: $notifySound)
+                .disabled(!notifyWaiting && !notifyDone)
+        } header: {
+            Text("Notifications")
+        } footer: {
+            Text("""
+                Shown only for tabs you are not looking at; clicking one opens its tab. \
+                Needs the status hooks above and notifications allowed for Ghostty in System Settings.
+                """)
+        }
+
+        Section {
             Picker("Opens", selection: presetBinding) {
                 Text("Claude Code").tag(Preset.claude)
                 Text("WTA chat (needs AgentTerm)").tag(Preset.wta)
@@ -645,7 +673,10 @@ private struct AgentSettingsAgents: View {
         } header: {
             Text("Agent pane")
         } footer: {
-            Text("What starts in the split opened by the ✨ button in the sidebar or by ⌃⌘P.")
+            Text("""
+                What starts in the split opened by the ✨ button in the sidebar or by ⌃⌘P. \
+                When a command fails, “Fix” in the sidebar opens Claude Code with the error.
+                """)
         }
     }
 

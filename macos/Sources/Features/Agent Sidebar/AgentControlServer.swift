@@ -424,6 +424,10 @@ enum AgentControlOperations {
             }
             return creationResult(created, controller)
 
+        case "fix_last_error":
+            AgentSidebarModel.shared.fixLastError()
+            return ["ok": true]
+
         case "open_settings":
             if let pane = stringParam(params, "pane") {
                 UserDefaults.standard.set(pane, forKey: "AgentSettingsPane")
@@ -492,6 +496,11 @@ enum AgentControlOperations {
             params["tab_id"] = stableTabID(controller)
         }
         AgentControlServer.shared.broadcast(["type": "event", "method": "vt_sequence", "params": params])
+        AgentSidebarModel.shared.commandFinished(
+            paneID: paneID(surface),
+            tabID: params["tab_id"] as? String ?? "",
+            exitCode: exitCode,
+            isAgentPane: isAgentPane(surface))
     }
 
     /// True when the pane hosts an agent UI instead of a shell.

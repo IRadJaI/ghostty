@@ -954,6 +954,11 @@ class AppDelegate: NSObject,
         didReceive: UNNotificationResponse,
         withCompletionHandler: () -> Void
     ) {
+        // agent-sidebar: notifications about agents open their tab.
+        if AgentNotifier.handle(didReceive) {
+            withCompletionHandler()
+            return
+        }
         ghostty.handleUserNotification(response: didReceive)
         withCompletionHandler()
     }
@@ -963,6 +968,11 @@ class AppDelegate: NSObject,
         willPresent: UNNotification,
         withCompletionHandler: (UNNotificationPresentationOptions) -> Void
     ) {
+        // agent-sidebar: the notifier already skips the tab in front.
+        if AgentNotifier.isOwn(willPresent) {
+            withCompletionHandler([.banner, .sound])
+            return
+        }
         let shouldPresent = ghostty.shouldPresentNotification(notification: willPresent)
         let options: UNNotificationPresentationOptions = shouldPresent ? [.banner, .sound] : []
         withCompletionHandler(options)

@@ -22,6 +22,11 @@ enum AgentSidebarDefaults {
     static let showGitChanges = "AgentSidebarShowGitChanges"
     static let hideNativeTabBar = "AgentSidebarHideNativeTabBar"
     static let agentPaneCommand = "AgentSidebarAgentPaneCommand"
+    static let notifyWaiting = "AgentSidebarNotifyWaiting"
+    static let notifyDone = "AgentSidebarNotifyDone"
+    static let notifySound = "AgentSidebarNotifySound"
+    /// `ask`, `always` or `never`.
+    static let restoreMode = "AgentSidebarRestoreMode"
 
     /// Claude Code itself, in an interactive login shell so `claude` is
     /// found on the user's PATH.
@@ -41,6 +46,10 @@ enum AgentSidebarDefaults {
         showGitBranch: true,
         showGitChanges: false,
         hideNativeTabBar: true,
+        notifyWaiting: true,
+        notifyDone: true,
+        notifySound: true,
+        restoreMode: "ask",
     ]
 }
 

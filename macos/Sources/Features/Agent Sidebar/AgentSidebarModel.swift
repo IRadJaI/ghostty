@@ -30,6 +30,8 @@ final class AgentSidebarModel: ObservableObject {
         var agent: AgentKind?
         var state: AgentState?
         var message: String?
+        /// The agent's own session id, when its hooks report one.
+        var sessionID: String?
         var git: AgentGitInfo?
 
         /// The agent is blocked on the user, or the terminal rang its bell.
@@ -77,18 +79,74 @@ final class AgentSidebarModel: ObservableObject {
         }
     }
 
-    /// Sends one of the agent pane's error-fix actions for a tab:
-    /// `autofix_execute_from_detected`, `autofix_execute` or
-    /// `autofix_dismiss_suggestion`.
+    /// Handles a button of the error-fix bar: `autofix_execute_from_detected`,
+    /// `autofix_execute` or `autofix_dismiss_suggestion`.
+    ///
+    /// With the WTA agent pane the action goes to it as an event. Otherwise
+    /// "Fix" opens Claude Code next to the failed command and hands it the
+    /// terminal output.
     func sendAutofixAction(_ method: String, tabID: String) {
         guard let state = autofix[tabID] else { return }
-        AgentControlServer.shared.broadcast([
-            "type": "event",
-            "method": method,
-            "params": ["pane_id": state.paneID, "tab_id": tabID],
+        let command = UserDefaults.standard.string(forKey: AgentSidebarDefaults.agentPaneCommand)
+            ?? AgentSidebarDefaults.defaultAgentPaneCommand
+        if command == AgentSidebarDefaults.wtaAgentPaneCommand {
+            AgentControlServer.shared.broadcast([
+                "type": "event",
+                "method": method,
+                "params": ["pane_id": state.paneID, "tab_id": tabID],
+            ])
+            if method == "autofix_dismiss_suggestion" {
+                autofix[tabID] = nil
+            }
+            return
+        }
+
+        if method != "autofix_dismiss_suggestion" {
+            fixWithClaude(state)
+        }
+        autofix[tabID] = nil
+    }
+
+    private func fixWithClaude(_ state: Autofix) {
+        let context = try? AgentControlOperations.perform(
+            "pane_context", ["target": state.paneID, "max_lines": 60, "max_chars": 6000]) as? [String: Any]
+        let output = context?["content"] as? String ?? ""
+        let prompt = """
+            A command just failed in my terminal (\(state.summary)).
+            Here is the end of the terminal output:
+
+            \(output)
+
+            Explain briefly what went wrong and fix it. Ask before doing anything destructive.
+            """
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ghostty-agent-fix-\(UUID().uuidString).txt")
+        guard (try? prompt.write(to: file, atomically: true, encoding: .utf8)) != nil else { return }
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+
+        _ = try? AgentControlOperations.perform("split_pane", [
+            "target": state.paneID,
+            "direction": "right",
+            "command": "/bin/zsh -lic 'p=$(cat \"$1\"); rm -f \"$1\"; exec claude \"$p\"' fix '\(file.path)'",
+            "agent_pane": true,
+            "focus": true,
+            "wait": true,
         ])
-        if method == "autofix_dismiss_suggestion" {
-            autofix[tabID] = nil
+    }
+
+    /// Called when a command finishes in a shell pane.
+    func commandFinished(paneID: String, tabID: String, exitCode: Int, isAgentPane: Bool) {
+        guard !isAgentPane, !tabID.isEmpty else { return }
+        // 130 is ctrl+c: the user stopped the command on purpose.
+        if exitCode == 0 || exitCode == 130 {
+            if autofix[tabID]?.paneID == paneID {
+                autofix[tabID] = nil
+            }
+        } else {
+            let state = Autofix(state: "detected", paneID: paneID, summary: "Command failed (exit \(exitCode))")
+            if autofix[tabID] != state {
+                autofix[tabID] = state
+            }
         }
     }
 
@@ -137,6 +195,7 @@ final class AgentSidebarModel: ObservableObject {
         }
 
         AgentSidebarMenu.shared.install()
+        AgentHookInstaller.refreshInstalledScript()
 
         let timer = Timer(timeInterval: Self.refreshInterval, repeats: true) { _ in
             Task { @MainActor in
@@ -230,6 +289,7 @@ final class AgentSidebarModel: ObservableObject {
                     agent: agent.kind,
                     state: agent.state,
                     message: agent.message,
+                    sessionID: agent.sessionID,
                     git: git
                 ))
             }
@@ -249,6 +309,13 @@ final class AgentSidebarModel: ObservableObject {
 
         applyNativeTabBarVisibility()
 
+        if !AgentSidebarDemo.enabled {
+            AgentNotifier.shared.update(tabs) { tab in
+                NSApp.isActive && tab.isSelected && (windows[tab.id]?.window?.isKeyWindow ?? false)
+            }
+            AgentSessionRestore.shared.update(tabs)
+        }
+
         if defaults.bool(forKey: AgentSidebarDefaults.showRecent), !AgentSidebarDemo.enabled {
             refreshRecentSessionsIfNeeded()
         }
@@ -260,6 +327,7 @@ final class AgentSidebarModel: ObservableObject {
         var kind: AgentKind?
         var state: AgentState?
         var message: String?
+        var sessionID: String?
     }
 
     /// Works out which agent (if any) runs in a tab and what it is doing.
@@ -295,7 +363,7 @@ final class AgentSidebarModel: ObservableObject {
             let priority = hook?.state.priority ?? 0
             if priority > bestPriority {
                 bestPriority = priority
-                best = AgentInfo(kind: kind, state: hook?.state, message: hook?.message)
+                best = AgentInfo(kind: kind, state: hook?.state, message: hook?.message, sessionID: hook?.sessionID)
             }
         }
 

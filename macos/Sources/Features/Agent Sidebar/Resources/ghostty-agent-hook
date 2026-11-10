@@ -22,7 +22,10 @@ dir="${GHOSTTY_AGENTS_DIR:-$HOME/.ghostty-agents}/status"
 payload="null"
 if [ ! -t 0 ]; then
   if [ "${3:-}" = "nopayload" ]; then
-    cat >/dev/null 2>&1
+    # Keep only the session id: it starts the input, the rest can be large.
+    head="$({ head -c 4096; cat >/dev/null; } 2>/dev/null)"
+    sid="$(printf '%s' "$head" | sed -n 's/.*"session_id"[ ]*:[ ]*"\([A-Za-z0-9_-]*\)".*/\1/p' | head -n 1)"
+    [ -n "$sid" ] && payload="{\"session_id\":\"$sid\"}"
   else
     payload="$(cat 2>/dev/null)"
   fi
