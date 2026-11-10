@@ -155,9 +155,15 @@ struct AgentHookStatus: Equatable {
 
         let seconds = (root["ts"] as? NSNumber)?.doubleValue ?? 0
         let payload = root["payload"] as? [String: Any]
+        // Claude Code also notifies about things that need no answer.
+        var shown = state
+        if state == .waiting, let type = payload?["notification_type"] as? String,
+           ["idle_prompt", "auth_success", "agent_completed"].contains(type) || type.hasPrefix("quota_") {
+            shown = .done
+        }
         return AgentHookStatus(
             agent: (root["agent"] as? String).flatMap { AgentKind(rawValue: $0) },
-            state: state,
+            state: shown,
             timestamp: Date(timeIntervalSince1970: seconds),
             sessionID: payload?["session_id"] as? String,
             cwd: payload?["cwd"] as? String,

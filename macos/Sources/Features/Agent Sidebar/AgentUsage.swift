@@ -1,7 +1,6 @@
 import Foundation
 
-// Fork addition (agent-sidebar): token usage of Claude Code sessions, read
-// from the transcripts Claude Code keeps under ~/.claude/projects.
+// Fork addition (agent-sidebar): token usage of Claude Code sessions, read from their transcripts.
 
 struct AgentUsage: Equatable {
     /// Tokens in the context of the latest request, including its reply.
@@ -17,8 +16,7 @@ struct AgentUsage: Equatable {
     var sessionTotal: Int { input + output }
 }
 
-/// Follows the transcripts of the sessions it is asked about. Each file is
-/// read incrementally, so a refresh costs only the lines added since.
+/// Follows the transcripts of the sessions it is asked about.
 final class AgentUsageTracker: @unchecked Sendable {
     static let shared = AgentUsageTracker()
 
@@ -30,6 +28,7 @@ final class AgentUsageTracker: @unchecked Sendable {
         var lastMessageID: String?
         var lastCounted = (input: 0, output: 0, cacheRead: 0)
         var lastLookup = Date.distantPast
+        var lastWanted = Date()
     }
 
     private let lock = NSLock()
@@ -60,8 +59,10 @@ final class AgentUsageTracker: @unchecked Sendable {
                 self.update(id)
             }
             self.lock.lock()
-            self.sessions = self.sessions.filter { sessionIDs.contains($0.key) }
-            self.published = self.published.filter { sessionIDs.contains($0.key) }
+            // Keep a session for a while: its id can drop out for a moment.
+            let cutoff = Date().addingTimeInterval(-120)
+            self.sessions = self.sessions.filter { $0.value.lastWanted > cutoff }
+            self.published = self.published.filter { self.sessions[$0.key] != nil }
             self.scanning = false
             self.lock.unlock()
         }
@@ -84,9 +85,10 @@ final class AgentUsageTracker: @unchecked Sendable {
                 // The file was replaced; start over.
                 session = Session(path: path)
             }
-            if size > session.offset, (try? handle.seek(toOffset: session.offset)) != nil,
-               let data = try? handle.readToEnd(),
-               let lastNewline = data.lastIndex(of: UInt8(ascii: "\n")) {
+            // In blocks: a long session's transcript runs to hundreds of MB.
+            while size > session.offset, (try? handle.seek(toOffset: session.offset)) != nil,
+                  let data = try? handle.read(upToCount: 4 << 20), !data.isEmpty,
+                  let lastNewline = data.lastIndex(of: UInt8(ascii: "\n")) {
                 let complete = data[data.startIndex...lastNewline]
                 for line in complete.split(separator: UInt8(ascii: "\n")) {
                     Self.apply(line, to: &session)
@@ -94,6 +96,7 @@ final class AgentUsageTracker: @unchecked Sendable {
                 session.offset += UInt64(complete.count)
             }
         }
+        session.lastWanted = Date()
 
         lock.lock()
         sessions[id] = session

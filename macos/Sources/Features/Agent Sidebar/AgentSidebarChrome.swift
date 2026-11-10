@@ -1,24 +1,15 @@
 import AppKit
 import SwiftUI
 
-// Fork addition (agent-sidebar): AppKit pieces of the sidebar that SwiftUI
-// cannot express reliably: the backdrop strip in the titlebar and the
-// resize handle.
+// Fork addition (agent-sidebar): AppKit parts of the sidebar (titlebar strip, resize handle, tooltips).
 
-/// Continues the sidebar backdrop into the window's titlebar, so the sidebar
-/// runs the full height of the window like Finder's.
-///
-/// The titlebar view paints its own background over the content view, so
-/// the strip has to live inside it, below the window buttons and the title.
+/// Continues the sidebar backdrop into the window's titlebar, so the sidebar runs the full height of the window like Finder's.
 @MainActor
 enum AgentSidebarTitlebarBackdrop {
     private static let identifier = NSUserInterfaceItemIdentifier("AgentSidebarTitlebarBackdrop")
     private static let titleIdentifier = NSUserInterfaceItemIdentifier("AgentSidebarTitlebarTitle")
 
     /// Shows the strip at `width`, or removes it when `width` is nil.
-    ///
-    /// The system title would start next to the window buttons and run across
-    /// the sidebar's edge, so it is replaced with a label right of the strip.
     static func sync(window: NSWindow, width: CGFloat?) {
         let container = (window as? TerminalWindow)?.titlebarContainer?
             .firstDescendant(withClassName: "NSTitlebarView")
@@ -58,6 +49,8 @@ enum AgentSidebarTitlebarBackdrop {
             container.addSubview(backdrop, positioned: .below, relativeTo: nil)
         }
 
+        // Window styles that hide the title themselves keep it that way.
+        guard title != nil || window.titleVisibility == .visible else { return }
         if window.titleVisibility != .hidden {
             window.titleVisibility = .hidden
         }
@@ -146,8 +139,7 @@ struct AgentSidebarResizeHandle: NSViewRepresentable {
     }
 }
 
-/// A tooltip backed by AppKit: SwiftUI's `.help` does not show up inside the
-/// terminal window.
+/// A tooltip backed by AppKit.
 private struct AgentTooltipView: NSViewRepresentable {
     let text: String
 

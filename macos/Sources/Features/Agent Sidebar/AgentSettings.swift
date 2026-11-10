@@ -2,10 +2,7 @@ import AppKit
 import GhosttyKit
 import SwiftUI
 
-// Fork addition (agent-sidebar): a settings window for the most used options.
-//
-// Values chosen here go to a separate overrides file that is loaded after the
-// regular Ghostty config, so the user's own config file is never rewritten.
+// Fork addition (agent-sidebar): settings window; its values go to an overrides file, not the user config.
 
 // MARK: - Store
 
@@ -270,7 +267,8 @@ extension AgentSettingsStore {
     func text(_ key: String, default fallback: String) -> Binding<String> {
         Binding(
             get: { self.value(key) ?? fallback },
-            set: { self.set(key, $0) })
+            // An empty choice means "as in the config file".
+            set: { self.set(key, $0.isEmpty ? nil : $0) })
     }
 
     func number(_ key: String, default fallback: Double, format: String = "%.0f") -> Binding<Double> {
@@ -319,7 +317,7 @@ private struct AgentSettingsAppearance: View {
 
         Section("Font") {
             Picker("Family", selection: store.text("font-family", default: "")) {
-                Text("Default").tag("")
+                Text("From the config file").tag("")
                 Divider()
                 ForEach(fontChoices, id: \.self) { family in
                     Text(family).tag(family)
@@ -714,29 +712,51 @@ private struct AgentSettingsAgents: View {
             hooksMessage = "The installer is missing from the app bundle."
             return
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["python3", script.path] + (remove ? ["--remove"] : [])
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            hooksMessage = "Could not run the installer: \(error.localizedDescription)"
+        guard let python = Self.python else {
+            hooksMessage = "Python 3 was not found. Install the Xcode Command Line Tools (xcode-select --install) and try again."
             return
         }
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        hooksInstalled = Self.detectHooks()
-        if process.terminationStatus != 0 {
-            hooksMessage = output.isEmpty ? "The installer failed." : output
-        } else if remove {
-            hooksMessage = "Turned off."
-        } else {
-            hooksMessage = "Turned on. Restart running Claude Code sessions to see their status."
+        hooksMessage = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: python)
+            process.arguments = [script.path] + (remove ? ["--remove"] : [])
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            var failure: String?
+            do {
+                try process.run()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                if process.terminationStatus != 0 {
+                    let output = String(data: data, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    failure = output.isEmpty ? "The installer failed." : output
+                }
+            } catch {
+                failure = "Could not run the installer: \(error.localizedDescription)"
+            }
+            DispatchQueue.main.async {
+                hooksInstalled = Self.detectHooks()
+                hooksMessage = failure ?? (remove
+                    ? "Turned off."
+                    : "Turned on. Restart running Claude Code sessions to see their status.")
+            }
         }
+    }
+
+    /// A GUI app does not see the shell's PATH.
+    private static var python: String? {
+        let manager = FileManager.default
+        for path in ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"] where manager.isExecutableFile(atPath: path) {
+            return path
+        }
+        let tools = ["/Library/Developer/CommandLineTools/usr/bin/python3", "/Applications/Xcode.app"]
+        if tools.contains(where: { manager.fileExists(atPath: $0) }) {
+            return "/usr/bin/python3"
+        }
+        return nil
     }
 
     private static func detectHooks() -> Bool {

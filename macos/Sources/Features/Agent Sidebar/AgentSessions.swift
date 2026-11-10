@@ -1,15 +1,12 @@
 import AppKit
 import UserNotifications
 
-// Fork addition (agent-sidebar): things that follow the agents across tabs
-// and launches: system notifications, restoring the previous session, and
-// keeping the installed hook script current.
+// Fork addition (agent-sidebar): notifications, restoring the previous session, hook script upkeep.
 
 // MARK: - Hook script
 
 enum AgentHookInstaller {
     /// Replaces the installed hook script when the app carries a newer one.
-    /// Does nothing unless the hooks were installed before.
     static func refreshInstalledScript() {
         let installed = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".ghostty-agents/bin/ghostty-agent-hook")
@@ -18,15 +15,17 @@ enum AgentHookInstaller {
               let old = try? Data(contentsOf: installed),
               new != old
         else { return }
-        try? new.write(to: installed, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: installed.path)
+        let staged = installed.appendingPathExtension("new")
+        guard (try? new.write(to: staged)) != nil,
+              (try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: staged.path)) != nil
+        else { return }
+        _ = try? FileManager.default.replaceItemAt(installed, withItemAt: staged)
     }
 }
 
 // MARK: - Notifications
 
-/// Posts a system notification when an agent starts waiting for the user or
-/// finishes while the user is looking elsewhere.
+/// Posts a system notification when an agent starts waiting for the user or finishes while the user is looking elsewhere.
 @MainActor
 final class AgentNotifier {
     static let shared = AgentNotifier()
@@ -36,6 +35,7 @@ final class AgentNotifier {
     private var lastStates: [String: AgentState] = [:]
     private var primed = false
     private var askedPermission = false
+    private var notified = Set<String>()
 
     /// `isFront` tells whether the user is looking at a tab right now.
     func update(_ tabs: [AgentSidebarModel.Tab], isFront: (AgentSidebarModel.Tab) -> Bool) {
@@ -47,7 +47,7 @@ final class AgentNotifier {
             states[tab.stableID] = state
 
             let front = isFront(tab)
-            if front {
+            if front, notified.remove(tab.stableID) != nil {
                 UNUserNotificationCenter.current()
                     .removeDeliveredNotifications(withIdentifiers: [Self.identifier(tab.stableID)])
             }
@@ -80,6 +80,7 @@ final class AgentNotifier {
             content.sound = .default
         }
         content.userInfo = [Self.tabKey: tab.stableID]
+        notified.insert(tab.stableID)
 
         let request = UNNotificationRequest(
             identifier: Self.identifier(tab.stableID), content: content, trigger: nil)
@@ -103,8 +104,7 @@ final class AgentNotifier {
         notification.request.content.userInfo[tabKey] != nil
     }
 
-    /// Switches to the tab of a clicked notification. Returns false when the
-    /// notification belongs to someone else.
+    /// Switches to the tab of a clicked notification.
     nonisolated static func handle(_ response: UNNotificationResponse) -> Bool {
         guard let tabID = response.notification.request.content.userInfo[tabKey] as? String else {
             return false
@@ -123,8 +123,7 @@ final class AgentNotifier {
 
 // MARK: - Previous session
 
-/// Remembers the open tabs and offers to bring them back on the next launch,
-/// resuming the Claude Code sessions that were running in them.
+/// Remembers the open tabs and offers to bring them back on the next launch, resuming the Claude Code sessions that were running in them.
 @MainActor
 final class AgentSessionRestore {
     static let shared = AgentSessionRestore()
@@ -149,6 +148,7 @@ final class AgentSessionRestore {
     /// What the previous launch left behind; nil once handled.
     private var previous: [SavedTab]?
     private var promptScheduled = false
+    private var restoreAttempts = 0
     private var recording = false
     private var lastWritten: [SavedTab] = []
 
@@ -205,11 +205,11 @@ final class AgentSessionRestore {
         var sessionCount: Int { resume.count + open.filter { $0.session != nil }.count }
     }
 
-    /// Matches the saved tabs against the tabs that exist now: Ghostty may
-    /// have restored the windows itself, and a fresh launch has one tab.
+    /// Matches the saved tabs against the tabs that exist now.
     private func plan(for saved: [SavedTab]) -> Plan {
         var plan = Plan()
-        var free = AgentSidebarModel.shared.tabs.filter { $0.agent == nil }
+        let model = AgentSidebarModel.shared
+        var free = model.tabs.filter { $0.agent == nil && model.hasShellInFront($0) }
         for tab in saved {
             if let index = free.firstIndex(where: { $0.pwd == tab.cwd }) {
                 let live = free.remove(at: index)
@@ -228,6 +228,14 @@ final class AgentSessionRestore {
         let mode = UserDefaults.standard.string(forKey: AgentSidebarDefaults.restoreMode) ?? "ask"
         let model = AgentSidebarModel.shared
         model.refresh()
+        // A shell that has not reported its directory yet cannot be matched.
+        if model.tabs.contains(where: { $0.pwd == nil }), restoreAttempts < 5 {
+            restoreAttempts += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                Task { @MainActor in self.offerRestore() }
+            }
+            return
+        }
         let plan = plan(for: saved)
 
         guard mode != "never", !plan.isEmpty,
@@ -293,11 +301,12 @@ final class AgentSessionRestore {
         let model = AgentSidebarModel.shared
 
         for (tab, session) in plan.resume {
-            guard let command = Self.resumeCommand(session),
+            // Typed as keys: pasted text would wait for return at the prompt.
+            guard Self.resumeCommand(session) != nil, model.hasShellInFront(tab),
                   let controller = model.window(for: tab)?.windowController as? TerminalController,
                   let surface = controller.focusedSurface
             else { continue }
-            surface.surfaceModel?.sendText(command)
+            _ = surface.surfaceModel?.perform(action: "text:claude --resume \(session)\\r")
         }
 
         var after = window

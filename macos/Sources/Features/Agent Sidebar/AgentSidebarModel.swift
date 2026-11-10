@@ -138,7 +138,9 @@ final class AgentSidebarModel: ObservableObject {
 
     /// Called when a command finishes in a shell pane.
     func commandFinished(paneID: String, tabID: String, exitCode: Int, isAgentPane: Bool) {
-        guard !isAgentPane, !tabID.isEmpty else { return }
+        // WTA detects failures itself and reports them as autofix events.
+        let command = UserDefaults.standard.string(forKey: AgentSidebarDefaults.agentPaneCommand)
+        guard !isAgentPane, !tabID.isEmpty, command != AgentSidebarDefaults.wtaAgentPaneCommand else { return }
         // 130 is ctrl+c: the user stopped the command on purpose.
         if exitCode == 0 || exitCode == 130 {
             if autofix[tabID]?.paneID == paneID {
@@ -311,6 +313,10 @@ final class AgentSidebarModel: ObservableObject {
         if result != tabs {
             tabs = result
         }
+        let liveIDs = Set(result.map(\.stableID))
+        if autofix.keys.contains(where: { !liveIDs.contains($0) }), !AgentSidebarDemo.enabled {
+            autofix = autofix.filter { liveIDs.contains($0.key) }
+        }
 
         applyNativeTabBarVisibility()
 
@@ -458,17 +464,26 @@ final class AgentSidebarModel: ObservableObject {
 
     // MARK: Native tab bar
 
+    /// Re-applies the per-window AppKit state right after a layout change.
+    func syncWindowChrome() {
+        applyNativeTabBarVisibility()
+    }
+
+    /// True when the tab's focused terminal sits at a shell prompt.
+    func hasShellInFront(_ tab: Tab) -> Bool {
+        guard let controller = window(for: tab)?.windowController as? TerminalController,
+              let pid = controller.focusedSurface?.surfaceModel?.foregroundPID,
+              let name = Self.processName(pid: pid)
+        else { return false }
+        return AgentHookStore.shellNames.contains(name.lowercased())
+    }
+
     /// Hides AppKit's own tab bar while the sidebar is showing the tabs.
     ///
     /// The tab bar is a titlebar accessory, and hiding an accessory view
     /// controller is public API. The accessory is found by the identifier
     /// Ghostty's window classes give it, with the private `NSTabBar` class
     /// name as a fallback. If it is not found nothing changes.
-    /// Re-applies the per-window AppKit state right after a layout change.
-    func syncWindowChrome() {
-        applyNativeTabBarVisibility()
-    }
-
     private func applyNativeTabBarVisibility() {
         let defaults = UserDefaults.standard
         // The collapsed rail lists the tabs too.
