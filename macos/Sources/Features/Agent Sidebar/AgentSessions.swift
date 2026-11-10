@@ -316,6 +316,8 @@ final class AgentSessionRestore {
         var open: [SavedTab] = []
         /// Sessions to resume in tabs that are already there.
         var resume: [(tab: AgentSidebarModel.Tab, saved: SavedTab)] = []
+        /// Empty shells from the launch that no saved tab matched.
+        var spare: [AgentSidebarModel.Tab] = []
 
         var isEmpty: Bool { open.isEmpty && resume.isEmpty }
         var sessionCount: Int { resume.count + open.filter { $0.session != nil }.count }
@@ -336,6 +338,7 @@ final class AgentSessionRestore {
                 plan.open.append(tab)
             }
         }
+        plan.spare = free
         return plan
     }
 
@@ -442,6 +445,7 @@ final class AgentSessionRestore {
         }
 
         var after = window
+        var opened = false
         for tab in open {
             var config = Ghostty.SurfaceConfiguration()
             if let cwd = Self.sessionDirectory(tab) ?? tab.cwd, FileManager.default.fileExists(atPath: cwd) {
@@ -453,6 +457,23 @@ final class AgentSessionRestore {
             // Each tab goes after the previous one to keep the saved order.
             let created = TerminalController.newTab(appDelegate.ghostty, from: after, withBaseConfig: config)
             after = created?.window ?? after
+            opened = opened || created != nil
+        }
+
+        guard opened else { return }
+        let spare = plan.spare.map(\.id)
+        // After the sheet is gone and the new tabs are in place.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            Task { @MainActor in
+                for tab in model.tabs where spare.contains(tab.id) {
+                    guard model.hasShellInFront(tab),
+                          let controller = model.window(for: tab)?.windowController as? TerminalController,
+                          !controller.surfaceTree.contains(where: { $0.needsConfirmQuit }),
+                          (controller.window?.tabGroup?.windows.count ?? 0) > 1
+                    else { continue }
+                    controller.closeTabImmediately()
+                }
+            }
         }
     }
 
