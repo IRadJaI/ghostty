@@ -425,6 +425,9 @@ enum AgentControlOperations {
             return creationResult(created, controller)
 
         case "open_settings":
+            if let pane = stringParam(params, "pane") {
+                UserDefaults.standard.set(pane, forKey: "AgentSettingsPane")
+            }
             AgentSettingsWindowController.shared.show()
             return ["ok": true]
 

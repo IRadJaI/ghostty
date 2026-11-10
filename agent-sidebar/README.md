@@ -83,8 +83,9 @@ mkdir -p ~/bin && ln -sf "$PWD/tools/wta/macos/wta-ghostty" ~/bin/wta-ghostty
 Если панель открылась с сообщением об ошибке, оно говорит, чего не хватает
 (не найден `wta-ghostty`, не собран `wta` и т. п.).
 
-Команда запуска панели хранится в настройке `AgentSidebarAgentPaneCommand`
-(по умолчанию `/bin/zsh -lc 'exec wta-ghostty helper'`).
+Что запускается в панели, выбирается в окне настроек (Settings → Agents →
+Agent pane): Claude Code (по умолчанию, WTA не нужен), чат WTA или своя
+команда. Исправление ошибок («Command failed — Fix») работает только с WTA.
 
 ### Управляющий сокет
 

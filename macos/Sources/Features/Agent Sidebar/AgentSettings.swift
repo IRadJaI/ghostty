@@ -224,11 +224,17 @@ private enum AgentSettingsPane: String, CaseIterable, Identifiable {
 
 struct AgentSettingsView: View {
     @ObservedObject private var store = AgentSettingsStore.shared
-    @State private var pane: AgentSettingsPane? = .appearance
+    @AppStorage("AgentSettingsPane") private var paneName = AgentSettingsPane.appearance.rawValue
+
+    private var pane: AgentSettingsPane? { AgentSettingsPane(rawValue: paneName) }
+
+    private var paneBinding: Binding<AgentSettingsPane?> {
+        Binding(get: { pane }, set: { paneName = ($0 ?? .appearance).rawValue })
+    }
 
     var body: some View {
         NavigationSplitView {
-            List(AgentSettingsPane.allCases, selection: $pane) { pane in
+            List(AgentSettingsPane.allCases, selection: paneBinding) { pane in
                 Label {
                     Text(pane.rawValue)
                 } icon: {
@@ -583,37 +589,115 @@ private struct AgentSettingsAgents: View {
     private var agentPaneCommand = AgentSidebarDefaults.defaultAgentPaneCommand
 
     @State private var hooksInstalled = false
+    @State private var hooksMessage: String?
+    @State private var customCommand = false
+
+    private enum Preset: Hashable {
+        case claude, wta, custom
+    }
 
     var body: some View {
         Section {
-            LabeledContent("Claude Code status hooks") {
-                Label(
-                    hooksInstalled ? "Installed" : "Not installed",
-                    systemImage: hooksInstalled ? "checkmark.circle.fill" : "minus.circle")
-                    .foregroundStyle(hooksInstalled ? .green : .secondary)
+            LabeledContent {
+                HStack(spacing: 10) {
+                    Label(
+                        hooksInstalled ? "On" : "Off",
+                        systemImage: hooksInstalled ? "checkmark.circle.fill" : "minus.circle")
+                        .foregroundStyle(hooksInstalled ? .green : .secondary)
+                    Button(hooksInstalled ? "Turn Off" : "Turn On") {
+                        runInstaller(remove: hooksInstalled)
+                    }
+                }
+            } label: {
+                Text("Claude Code status in the sidebar")
+            }
+            if let hooksMessage {
+                Text(hooksMessage)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
         } header: {
             Text("Status")
         } footer: {
             Text("""
-                The hooks report “Working”, “Needs you” and “Done” to the sidebar. \
-                Install them with agent-sidebar/install-claude-hooks.py from the fork's repository.
+                Shows “Working”, “Needs you” and “Done” next to the tabs that run Claude Code. \
+                Turning it on adds hooks to ~/.claude/settings.json (a backup copy is saved next to it) \
+                and takes effect in Claude Code sessions started afterwards.
                 """)
         }
-        .onAppear { hooksInstalled = Self.detectHooks() }
+        .onAppear {
+            hooksInstalled = Self.detectHooks()
+            customCommand = preset(for: agentPaneCommand) == .custom
+        }
 
         Section {
-            TextField("Command", text: $agentPaneCommand, axis: .vertical)
-                .font(.system(.body, design: .monospaced))
-                .lineLimit(1...3)
-            Button("Restore Default") {
-                agentPaneCommand = AgentSidebarDefaults.defaultAgentPaneCommand
+            Picker("Opens", selection: presetBinding) {
+                Text("Claude Code").tag(Preset.claude)
+                Text("WTA chat (needs AgentTerm)").tag(Preset.wta)
+                Text("Custom command").tag(Preset.custom)
             }
-            .disabled(agentPaneCommand == AgentSidebarDefaults.defaultAgentPaneCommand)
+            if customCommand {
+                TextField("Command", text: $agentPaneCommand, axis: .vertical)
+                    .font(.system(.body, design: .monospaced))
+                    .lineLimit(1...3)
+            }
         } header: {
             Text("Agent pane")
         } footer: {
-            Text("Runs in the split that the ✨ button and ⌃⌘P open.")
+            Text("What starts in the split opened by the ✨ button in the sidebar or by ⌃⌘P.")
+        }
+    }
+
+    private func preset(for command: String) -> Preset {
+        switch command {
+        case AgentSidebarDefaults.defaultAgentPaneCommand: return .claude
+        case AgentSidebarDefaults.wtaAgentPaneCommand: return .wta
+        default: return .custom
+        }
+    }
+
+    private var presetBinding: Binding<Preset> {
+        Binding(
+            get: { customCommand ? .custom : preset(for: agentPaneCommand) },
+            set: { preset in
+                customCommand = preset == .custom
+                switch preset {
+                case .claude: agentPaneCommand = AgentSidebarDefaults.defaultAgentPaneCommand
+                case .wta: agentPaneCommand = AgentSidebarDefaults.wtaAgentPaneCommand
+                case .custom: break
+                }
+            })
+    }
+
+    /// Runs the bundled installer; it keeps existing hooks and makes a backup.
+    private func runInstaller(remove: Bool) {
+        guard let script = Bundle.main.url(forResource: "install-claude-hooks", withExtension: "py") else {
+            hooksMessage = "The installer is missing from the app bundle."
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", script.path] + (remove ? ["--remove"] : [])
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            hooksMessage = "Could not run the installer: \(error.localizedDescription)"
+            return
+        }
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        hooksInstalled = Self.detectHooks()
+        if process.terminationStatus != 0 {
+            hooksMessage = output.isEmpty ? "The installer failed." : output
+        } else if remove {
+            hooksMessage = "Turned off."
+        } else {
+            hooksMessage = "Turned on. Restart running Claude Code sessions to see their status."
         }
     }
 

@@ -23,9 +23,12 @@ enum AgentSidebarDefaults {
     static let hideNativeTabBar = "AgentSidebarHideNativeTabBar"
     static let agentPaneCommand = "AgentSidebarAgentPaneCommand"
 
-    /// Runs the WTA helper (chat with the agent, error fixes) in a login
-    /// shell so `wta-ghostty` and `npx` are found on the user's PATH.
-    static let defaultAgentPaneCommand = "/bin/zsh -lc 'exec wta-ghostty helper'"
+    /// Claude Code itself, in an interactive login shell so `claude` is
+    /// found on the user's PATH.
+    static let defaultAgentPaneCommand = "/bin/zsh -lic 'exec claude'"
+
+    /// The WTA helper (chat with the agent, error fixes) from AgentTerm.
+    static let wtaAgentPaneCommand = "/bin/zsh -lc 'exec wta-ghostty helper'"
 
     static let registration: [String: Any] = [
         visible: true,
