@@ -147,7 +147,13 @@ xcodebuild -project macos/Ghostty.xcodeproj -scheme Ghostty \
   -configuration ReleaseLocal SYMROOT="$PWD/../build.noindex" \
   ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
 ditto "../build.noindex/ReleaseLocal/Ghostty Agents.app" "/Applications/Ghostty Agents.app"
+rm -rf "../build.noindex/ReleaseLocal/Ghostty Agents.app"
 ```
+
+Копию из папки сборки после установки удаляйте: пока на диске два приложения
+с одним идентификатором, macOS по клику на уведомление может запустить
+второе вместо того, чтобы перейти в открытое. Устанавливайте при закрытом
+приложении.
 
 Релизная сборка форка — отдельное приложение «Ghostty Agents»
 (`com.iradjai.ghostty-agents`): ставится рядом с обычным Ghostty и читает тот
