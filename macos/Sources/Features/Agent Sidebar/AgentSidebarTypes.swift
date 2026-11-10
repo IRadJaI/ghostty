@@ -32,6 +32,7 @@ enum AgentSidebarDefaults {
     /// `ask`, `always` or `never`.
     static let restoreMode = "AgentSidebarRestoreMode"
     static let statusBar = "AgentSidebarStatusBar"
+    static let peekOnHover = "AgentSidebarPeekOnHover"
     /// `daily`, `weekly`, `monthly` or `never`.
     static let upstreamInterval = "AgentSidebarUpstreamInterval"
     static let upstreamLastCheck = "AgentSidebarUpstreamLastCheck"
@@ -64,6 +65,7 @@ enum AgentSidebarDefaults {
         paneRing: true,
         restoreMode: "ask",
         statusBar: true,
+        peekOnHover: true,
         upstreamInterval: "weekly",
     ]
 }

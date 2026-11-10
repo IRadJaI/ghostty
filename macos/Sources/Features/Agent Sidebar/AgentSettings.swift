@@ -641,6 +641,7 @@ private struct AgentSettingsSidebar: View {
     @AppStorage(AgentSidebarDefaults.showGitChanges) private var showGitChanges = false
     @AppStorage(AgentSidebarDefaults.hideNativeTabBar) private var hideNativeTabBar = true
     @AppStorage(AgentSidebarDefaults.statusBar) private var statusBar = true
+    @AppStorage(AgentSidebarDefaults.peekOnHover) private var peekOnHover = true
 
     var body: some View {
         Section {
@@ -654,6 +655,7 @@ private struct AgentSettingsSidebar: View {
                 Text("Expanded, with titles").tag(true)
                 Text("Collapsed, icons only").tag(false)
             }
+            Toggle("Open the collapsed sidebar on hover", isOn: $peekOnHover)
             Toggle("Hide the native tab bar", isOn: $hideNativeTabBar)
             Toggle("Show only tabs with agents", isOn: $agentsOnly)
             Toggle("Show recent agent sessions", isOn: $showRecent)
