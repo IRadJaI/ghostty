@@ -125,9 +125,21 @@ open macos/build/Debug/Ghostty.app
 ```
 
 Debug-сборка медленная и показывает жёлтую плашку — это штатное поведение
-Ghostty. Для повседневного использования собирайте `-configuration
-ReleaseLocal`; у неё bundle id обычного Ghostty, поэтому официальный Ghostty
-перед запуском надо закрыть.
+Ghostty. Для повседневного использования собирайте релизную:
+
+```bash
+zig build -Doptimize=ReleaseFast -Demit-macos-app=false -Dxcframework-target=native
+xcodebuild -project macos/Ghostty.xcodeproj -scheme Ghostty \
+  -configuration ReleaseLocal SYMROOT="$PWD/macos/build" \
+  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
+ditto "macos/build/ReleaseLocal/Ghostty Agents.app" "/Applications/Ghostty Agents.app"
+```
+
+Релизная сборка форка — отдельное приложение «Ghostty Agents»
+(`com.iradjai.ghostty-agents`): ставится рядом с обычным Ghostty и читает тот
+же конфиг. Обновления из upstream в ней выключены, обновляется пересборкой.
+`-Dxcframework-target=native` и `ARCHS=arm64` собирают только под
+архитектуру этого Mac; без них нужна универсальная сборка ядра.
 
 Если `xcrun metal` не находится, поставьте компонент Xcode:
 `xcodebuild -downloadComponent MetalToolchain`.
@@ -196,8 +208,9 @@ agent-sidebar/install-claude-hooks.py --remove   # убрать
 сокета, сценарий скриншотов, этот README) и
 `.github/workflows/agent-sidebar.yml`.
 
-Файл проекта Xcode не менялся: папка `Sources` подключена как синхронизируемая,
-новые файлы попадают в сборку сами. Ядро на Zig не тронуто. Быстрый терминал
+В файле проекта Xcode изменены только имя и идентификатор конфигурации
+`ReleaseLocal`; папка `Sources` подключена как синхронизируемая, новые файлы
+попадают в сборку сами. Ядро на Zig не тронуто. Быстрый терминал
 (Quick Terminal) сайдбар не получает.
 
 ## Что проверено
