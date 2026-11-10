@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 import Darwin
 import GhosttyKit
 
@@ -424,6 +425,24 @@ enum AgentControlOperations {
                 controller.focusSurface(previous)
             }
             return creationResult(created, controller)
+
+        case "notification_test":
+            AgentNotifier.lastTestResult = "pending"
+            AgentNotifier.sendTest { failure in
+                AgentNotifier.lastTestResult = failure ?? "posted"
+            }
+            return ["ok": true]
+
+        case "notification_status":
+            let semaphore = DispatchSemaphore(value: 0)
+            var status = ""
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                status = "authorization=\(settings.authorizationStatus.rawValue) alert=\(settings.alertSetting.rawValue) "
+                    + "sound=\(settings.soundSetting.rawValue) style=\(settings.alertStyle.rawValue)"
+                semaphore.signal()
+            }
+            _ = semaphore.wait(timeout: .now() + 3)
+            return ["ok": true, "settings": status, "last_test": AgentNotifier.lastTestResult]
 
         case "fix_last_error":
             AgentSidebarModel.shared.fixLastError()

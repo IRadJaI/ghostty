@@ -126,6 +126,48 @@ final class AgentNotifier {
         }
     }
 
+    // MARK: Permission
+
+    /// What macOS allows this app to show, in words, and whether it is enough.
+    nonisolated static func permission(_ completion: @escaping (_ text: String, _ allowed: Bool) -> Void) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let text: String
+            var allowed = false
+            switch settings.authorizationStatus {
+            case .notDetermined: text = "Not asked yet"
+            case .denied: text = "Turned off in System Settings"
+            default:
+                allowed = settings.alertSetting == .enabled
+                text = allowed ? "Allowed" : "Allowed, but banners are off in System Settings"
+            }
+            DispatchQueue.main.async { completion(text, allowed) }
+        }
+    }
+
+    /// Asks for permission if needed and posts a sample notification.
+    nonisolated static func sendTest(_ completion: @escaping (_ failure: String?) -> Void) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            guard granted else {
+                let reason = error?.localizedDescription ?? "macOS did not allow notifications for this app."
+                DispatchQueue.main.async { completion(reason) }
+                return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = "Claude Code needs you"
+            content.subtitle = "Test notification"
+            content.body = "This is how an agent asks for your attention."
+            content.sound = .default
+            content.userInfo = [testKey: true]
+            center.add(UNNotificationRequest(identifier: "agent-sidebar-test", content: content, trigger: nil)) { error in
+                DispatchQueue.main.async { completion(error?.localizedDescription) }
+            }
+        }
+    }
+
+    private static let testKey = "agentSidebarTest"
+    nonisolated(unsafe) static var lastTestResult = "not run"
+
     private static func identifier(_ tabID: String) -> String {
         "agent-sidebar-\(tabID)"
     }
@@ -133,7 +175,7 @@ final class AgentNotifier {
     /// True for the notifications posted here.
     nonisolated static func isOwn(_ notification: UNNotification) -> Bool {
         let info = notification.request.content.userInfo
-        return info[tabKey] != nil || info[AgentUpstreamCheck.notificationKey] != nil
+        return info[tabKey] != nil || info[testKey] != nil || info[AgentUpstreamCheck.notificationKey] != nil
     }
 
     /// Switches to the tab of a clicked notification.

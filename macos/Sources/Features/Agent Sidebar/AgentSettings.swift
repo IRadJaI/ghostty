@@ -690,6 +690,17 @@ private struct AgentSettingsAgents: View {
     @AppStorage(AgentSidebarDefaults.dockBadge) private var dockBadge = true
     @AppStorage(AgentSidebarDefaults.paneRing) private var paneRing = true
 
+    @State private var permission = "…"
+    @State private var permissionAllowed = true
+    @State private var testResult: String?
+
+    private func refreshPermission() {
+        AgentNotifier.permission { text, allowed in
+            permission = text
+            permissionAllowed = allowed
+        }
+    }
+
     @State private var hooksInstalled = false
     @State private var hooksMessage: String?
     @State private var customCommand = false
@@ -731,9 +742,34 @@ private struct AgentSettingsAgents: View {
         .onAppear {
             hooksInstalled = Self.detectHooks()
             customCommand = preset(for: agentPaneCommand) == .custom
+            refreshPermission()
         }
 
         Section {
+            LabeledContent("macOS permission") {
+                HStack(spacing: 8) {
+                    Text(permission)
+                        .foregroundStyle(permissionAllowed ? Color.secondary : Color.orange)
+                    if !permissionAllowed, permission != "Not asked yet" {
+                        Button("Open System Settings") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    }
+                    Button("Send Test") {
+                        AgentNotifier.sendTest { failure in
+                            testResult = failure.map { "Not sent: \($0)" } ?? "Sent. No banner? Check Focus and the settings for this app."
+                            refreshPermission()
+                        }
+                    }
+                }
+            }
+            if let testResult {
+                Text(testResult)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("When an agent needs you", isOn: $notifyWaiting)
             soundPicker("Sound", $soundWaiting)
                 .disabled(!notifyWaiting)
