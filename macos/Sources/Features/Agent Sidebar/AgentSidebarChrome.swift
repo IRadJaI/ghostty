@@ -7,13 +7,15 @@ import SwiftUI
 @MainActor
 enum AgentSidebarTitlebarBackdrop {
     private static let identifier = NSUserInterfaceItemIdentifier("AgentSidebarTitlebarBackdrop")
+    private static let separatorIdentifier = NSUserInterfaceItemIdentifier("AgentSidebarTitlebarSeparator")
     private static let titleIdentifier = NSUserInterfaceItemIdentifier("AgentSidebarTitlebarTitle")
 
     /// Shows the strip at `width`, or removes it when `width` is nil.
-    static func sync(window: NSWindow, width: CGFloat?) {
+    static func sync(window: NSWindow, width: CGFloat?, chrome: AgentSidebarModel.Chrome) {
         let container = (window as? TerminalWindow)?.titlebarContainer?
             .firstDescendant(withClassName: "NSTitlebarView")
         let existing = container?.subviews.first { $0.identifier == identifier }
+        let separator = container?.subviews.first { $0.identifier == separatorIdentifier }
         let title = container?.subviews.first { $0.identifier == titleIdentifier } as? TitleLabel
 
         guard let container, let width,
@@ -21,6 +23,7 @@ enum AgentSidebarTitlebarBackdrop {
               container.bounds.height > 0
         else {
             existing?.removeFromSuperview()
+            separator?.removeFromSuperview()
             if let title {
                 title.removeFromSuperview()
                 window.titleVisibility = .visible
@@ -29,24 +32,36 @@ enum AgentSidebarTitlebarBackdrop {
         }
 
         let frame = NSRect(x: 0, y: 0, width: width, height: container.bounds.height)
-        if let existing {
-            if existing.frame != frame {
-                existing.frame = frame
-            }
-        } else {
+        let backdrop = existing ?? {
             let backdrop = NSVisualEffectView(frame: frame)
             backdrop.identifier = identifier
             backdrop.material = .sidebar
             backdrop.blendingMode = .behindWindow
             backdrop.state = .followsWindowActiveState
             backdrop.autoresizingMask = [.height]
-
-            let separator = NSBox(frame: NSRect(x: width - 1, y: 0, width: 1, height: frame.height))
-            separator.boxType = .separator
-            separator.autoresizingMask = [.height, .minXMargin]
-            backdrop.addSubview(separator)
-
             container.addSubview(backdrop, positioned: .below, relativeTo: nil)
+            return backdrop
+        }()
+        if backdrop.frame != frame {
+            backdrop.frame = frame
+        }
+        // Without the material the titlebar's own background matches the sidebar.
+        let hidden = chrome != .material
+        if backdrop.isHidden != hidden {
+            backdrop.isHidden = hidden
+        }
+
+        let line = separator ?? {
+            let line = NSBox()
+            line.identifier = separatorIdentifier
+            line.boxType = .separator
+            line.autoresizingMask = [.height]
+            container.addSubview(line, positioned: .above, relativeTo: backdrop)
+            return line
+        }()
+        let lineFrame = NSRect(x: width - 1, y: 0, width: 1, height: frame.height)
+        if line.frame != lineFrame {
+            line.frame = lineFrame
         }
 
         // Window styles that hide the title themselves keep it that way.
@@ -68,6 +83,16 @@ enum AgentSidebarTitlebarBackdrop {
         let color: NSColor = window.isKeyWindow ? .labelColor : .secondaryLabelColor
         if label.textColor != color {
             label.textColor = color
+        }
+        // Glass shows whatever is behind the window; keep the title legible.
+        if chrome == .glass, label.shadow == nil {
+            let shadow = NSShadow()
+            let dark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            shadow.shadowColor = (dark ? NSColor.black : NSColor.white).withAlphaComponent(0.7)
+            shadow.shadowBlurRadius = 3
+            label.shadow = shadow
+        } else if chrome != .glass, label.shadow != nil {
+            label.shadow = nil
         }
         let height = label.intrinsicContentSize.height
         let inset: CGFloat = 12

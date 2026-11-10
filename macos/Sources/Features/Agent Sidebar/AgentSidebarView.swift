@@ -369,7 +369,20 @@ struct AgentSidebarView: View {
 /// The translucent sidebar backdrop. It blends with whatever is behind the
 /// window (the desktop or other windows), like Finder's sidebar; on macOS 26
 /// the system renders this material in the Liquid Glass style.
-private struct AgentSidebarBackground: NSViewRepresentable {
+private struct AgentSidebarBackground: View {
+    @ObservedObject private var model = AgentSidebarModel.shared
+
+    var body: some View {
+        switch model.chrome {
+        case .material: AgentSidebarMaterial()
+        // The window's own glass shows through.
+        case .glass: Color.clear
+        case .flat(let color): Color(nsColor: color)
+        }
+    }
+}
+
+private struct AgentSidebarMaterial: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = .sidebar
@@ -526,7 +539,7 @@ private struct AgentSidebarRailItem: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            AgentSidebarIcon(agent: tab.agent, state: tab.state)
+            AgentSidebarIcon(agent: tab.agent, state: tab.state, badge: badge)
             Text("\(number)")
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -536,14 +549,6 @@ private struct AgentSidebarRailItem: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.primary.opacity(tab.isSelected ? 0.16 : (hovering ? 0.07 : 0)))
         )
-        .overlay(alignment: .topTrailing) {
-            if tab.needsAttention || tab.unread {
-                Circle()
-                    .fill(tab.needsAttention ? Color.orange : AgentSidebarStyle.color(for: .done))
-                    .frame(width: 7, height: 7)
-                    .padding(3)
-            }
-        }
         .contentShape(Rectangle())
         .onTapGesture(perform: select)
         .onHover { hovering = $0 }
@@ -551,6 +556,12 @@ private struct AgentSidebarRailItem: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tooltip)
         .accessibilityAddTraits(tab.isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// Orange: waits for the user or rang the bell. Green: finished unseen.
+    private var badge: Color? {
+        if tab.needsAttention { return .orange }
+        return tab.unread ? AgentSidebarStyle.color(for: .done) : nil
     }
 
     private var tooltip: String {
@@ -754,6 +765,8 @@ private struct AgentSidebarSessionRow: View {
 private struct AgentSidebarIcon: View {
     let agent: AgentKind?
     let state: AgentState?
+    /// A dot on the icon, where there is no room for one next to the title.
+    var badge: Color?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -771,9 +784,9 @@ private struct AgentSidebarIcon: View {
             }
             .frame(width: 20, height: 20)
 
-            if state == .waiting || state == .done, let state {
+            if let badge {
                 Circle()
-                    .fill(AgentSidebarStyle.color(for: state))
+                    .fill(badge)
                     .frame(width: 7, height: 7)
                     .offset(x: 2, y: 2)
             }

@@ -164,6 +164,33 @@ final class AgentSidebarModel: ObservableObject {
         sendAutofixAction(state.state == "review" ? "autofix_execute" : "autofix_execute_from_detected", tabID: tab.stableID)
     }
 
+    /// How the sidebar, the status bar and the titlebar strip are painted,
+    /// following the terminal's `background-blur` and `background-opacity`.
+    enum Chrome: Equatable {
+        /// The system sidebar material (blurred).
+        case material
+        /// Nothing: the window is already glass.
+        case glass
+        /// The terminal's background color: translucent without blur.
+        case flat(NSColor)
+    }
+
+    private(set) var chrome: Chrome = .material {
+        willSet { objectWillChange.send() }
+    }
+
+    private func currentChrome() -> Chrome {
+        guard let config = (NSApp.delegate as? AppDelegate)?.ghostty.config else { return .material }
+        switch config.backgroundBlur {
+        case .macosGlassRegular, .macosGlassClear:
+            return .glass
+        case .disabled where config.backgroundOpacity < 1:
+            return .flat(NSColor(config.backgroundColor).withAlphaComponent(config.backgroundOpacity))
+        default:
+            return .material
+        }
+    }
+
     private struct WeakWindow {
         weak var window: NSWindow?
     }
@@ -215,6 +242,7 @@ final class AgentSidebarModel: ObservableObject {
 
         let center = NotificationCenter.default
         let names: [Notification.Name] = [
+            .ghosttyConfigDidChange,
             NSWindow.didBecomeKeyNotification,
             NSWindow.didBecomeMainNotification,
             NSWindow.willCloseNotification,
@@ -252,6 +280,11 @@ final class AgentSidebarModel: ObservableObject {
             || defaults.bool(forKey: AgentSidebarDefaults.showGitChanges)
         let wantChanges = defaults.bool(forKey: AgentSidebarDefaults.showGitChanges)
         let hooks = AgentHookStore.load()
+
+        let chrome = currentChrome()
+        if chrome != self.chrome {
+            self.chrome = chrome
+        }
 
         var result: [Tab] = []
         var liveWindows: [ObjectIdentifier: WeakWindow] = [:]
@@ -517,7 +550,8 @@ final class AgentSidebarModel: ObservableObject {
 
             AgentSidebarTitlebarBackdrop.sync(
                 window: window,
-                width: sidebarVisible ? Self.occupiedWidth : nil)
+                width: sidebarVisible ? Self.occupiedWidth : nil,
+                chrome: chrome)
             for accessory in window.titlebarAccessoryViewControllers {
                 // Ghostty tags the tab bar accessory itself; only the main
                 // window's accessory actually contains the NSTabBar view.
