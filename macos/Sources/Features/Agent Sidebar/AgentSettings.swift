@@ -166,7 +166,8 @@ final class AgentSettingsWindowController: NSWindowController {
             backing: .buffered,
             defer: true)
         window.title = "Settings"
-        window.titlebarAppearsTransparent = true
+        // An opaque-material titlebar: content scrolls under it, not through the title.
+        window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 680, height: 440)
         window.contentView = NSHostingView(rootView: AgentSettingsView())
@@ -367,7 +368,7 @@ private struct AgentSettingsAppearance: View {
         }
 
         Section {
-            Picker("Icon", selection: store.text("macos-icon", default: "official")) {
+            Picker("Icon", selection: iconStyle) {
                 Text("Official").tag("official")
                 Text("Blueprint").tag("blueprint")
                 Text("Chalkboard").tag("chalkboard")
@@ -388,13 +389,14 @@ private struct AgentSettingsAppearance: View {
                     Text("Chrome").tag("chrome")
                 }
                 ColorPicker("Ghost", selection: store.color("macos-icon-ghost-color", default: .white), supportsOpacity: false)
-                ColorPicker("Screen", selection: store.color("macos-icon-screen-color", default: .blue), supportsOpacity: false)
+                ColorPicker("Screen", selection: store.color("macos-icon-screen-color", default: Color(red: 0.04, green: 0.16, blue: 0.42)), supportsOpacity: false)
             }
         } header: {
             Text("App icon")
         } footer: {
             Text("Changes the icon in the Dock and the app switcher.")
         }
+        .onAppear(perform: completeCustomIcon)
 
         Section("Cursor") {
             Picker("Shape", selection: store.text("cursor-style", default: "block")) {
@@ -419,6 +421,28 @@ private struct AgentSettingsAppearance: View {
             Text("Window")
         } footer: {
             Text("The titlebar style applies to new windows.")
+        }
+    }
+
+    private var iconStyle: Binding<String> {
+        Binding(
+            get: { store.value("macos-icon") ?? "official" },
+            set: { style in
+                store.set("macos-icon", style)
+                completeCustomIcon()
+            })
+    }
+
+    /// `custom-style` is ignored unless the frame and both colors are set.
+    private func completeCustomIcon() {
+        guard store.value("macos-icon") == "custom-style" else { return }
+        let required = [
+            "macos-icon-frame": "aluminum",
+            "macos-icon-ghost-color": "#ffffff",
+            "macos-icon-screen-color": "#0a2a6b",
+        ]
+        for (key, fallback) in required where store.value(key) == nil {
+            store.set(key, fallback)
         }
     }
 
