@@ -222,9 +222,16 @@ final class AgentSessionRestore {
         var tabs: [SavedTab]
     }
 
+    // A debug build must not offer or overwrite the release build's tabs.
+    #if DEBUG
+    private static let fileName = "last-session.debug.json"
+    #else
+    private static let fileName = "last-session.json"
+    #endif
+
     private static var fileURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".ghostty-agents/last-session.json")
+            .appendingPathComponent(".ghostty-agents/\(fileName)")
     }
 
     /// What the previous launch left behind; nil once handled.
