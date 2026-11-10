@@ -74,6 +74,13 @@ name="$(basename "$tty")"
 name="$(printf '%s' "$name" | tr -c 'A-Za-z0-9_.-' '_')"
 file="$dir/$name.json"
 
+# Compaction restarts the session but not the turn: keep the state it had.
+if [ "$state" = "idle" ] && [ -f "$file" ]; then
+  case "$payload" in
+    *'"source":"compact"'*) exit 0 ;;
+  esac
+fi
+
 if [ "$state" = "ended" ]; then
   rm -f "$file" 2>/dev/null
   exit 0
