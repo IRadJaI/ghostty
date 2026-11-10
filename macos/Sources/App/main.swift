@@ -2,6 +2,9 @@ import AppKit
 import Cocoa
 import GhosttyKit
 
+// agent-sidebar: must precede ghostty_init, which keeps the environment it sees.
+AgentEnvironment.scrubSessionMarkers()
+
 // Initialize Ghostty global state. We do this once right away because the
 // CLI APIs require it and it lets us ensure it is done immediately for the
 // rest of the app.

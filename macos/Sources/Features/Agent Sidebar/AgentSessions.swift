@@ -3,6 +3,24 @@ import UserNotifications
 
 // Fork addition (agent-sidebar): notifications, restoring the previous session, hook script upkeep.
 
+// MARK: - Environment
+
+enum AgentEnvironment {
+    /// Markers a Claude Code session leaves for its children. A terminal started from such a session must not hand them to its tabs: Claude Code there would stop saving its history.
+    private static let sessionMarkers = [
+        "CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT",
+        "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH",
+        "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_SESSION_ID",
+    ]
+
+    static func scrubSessionMarkers() {
+        for name in sessionMarkers {
+            unsetenv(name)
+        }
+    }
+}
+
 // MARK: - Hook script
 
 enum AgentHookInstaller {
@@ -215,6 +233,8 @@ final class AgentSessionRestore {
         var cwd: String?
         /// Claude Code session that was running in the tab.
         var session: String?
+        /// Where that session was working; the shell may be elsewhere.
+        var sessionCwd: String?
     }
 
     private struct Snapshot: Codable {
@@ -270,7 +290,8 @@ final class AgentSessionRestore {
             SavedTab(
                 title: tab.title,
                 cwd: tab.pwd,
-                session: tab.agent == .claude ? tab.sessionID : nil)
+                session: tab.agent == .claude ? tab.sessionID : nil,
+                sessionCwd: tab.agent == .claude ? tab.sessionCwd : nil)
         }
         guard saved != lastWritten else { return }
         lastWritten = saved
@@ -288,7 +309,7 @@ final class AgentSessionRestore {
         /// Tabs to open (the session, if any, is resumed in the new tab).
         var open: [SavedTab] = []
         /// Sessions to resume in tabs that are already there.
-        var resume: [(tab: AgentSidebarModel.Tab, session: String)] = []
+        var resume: [(tab: AgentSidebarModel.Tab, saved: SavedTab)] = []
 
         var isEmpty: Bool { open.isEmpty && resume.isEmpty }
         var sessionCount: Int { resume.count + open.filter { $0.session != nil }.count }
@@ -302,8 +323,8 @@ final class AgentSessionRestore {
         for tab in saved {
             if let index = free.firstIndex(where: { $0.pwd == tab.cwd }) {
                 let live = free.remove(at: index)
-                if let session = tab.session {
-                    plan.resume.append((live, session))
+                if tab.session != nil {
+                    plan.resume.append((live, tab))
                 }
             } else {
                 plan.open.append(tab)
@@ -351,11 +372,12 @@ final class AgentSessionRestore {
         }
         // List exactly what "Restore" is going to do.
         var entries = plan.open.map { tab -> String in
-            let place = tab.cwd.map { AgentSidebarFormat.abbreviate(path: $0) } ?? tab.title
+            let place = (tab.sessionCwd ?? tab.cwd).map { AgentSidebarFormat.abbreviate(path: $0) } ?? tab.title
             return place + (tab.session != nil ? "  —  Claude Code" : "")
         }
         entries += plan.resume.map { entry in
-            let place = entry.tab.pwd.map { AgentSidebarFormat.abbreviate(path: $0) } ?? entry.tab.title
+            let place = (entry.saved.sessionCwd ?? entry.tab.pwd)
+                .map { AgentSidebarFormat.abbreviate(path: $0) } ?? entry.tab.title
             return place + "  —  Claude Code"
         }
         var lines = entries.prefix(8).map { "•  " + $0 }
@@ -389,13 +411,14 @@ final class AgentSessionRestore {
         guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
         let model = AgentSidebarModel.shared
 
-        for (tab, session) in plan.resume {
-            // Typed as keys: pasted text would wait for return at the prompt.
-            guard Self.resumeCommand(session) != nil, model.hasShellInFront(tab),
+        for (tab, saved) in plan.resume {
+            guard let command = Self.resumeCommand(saved), model.hasShellInFront(tab),
                   let controller = model.window(for: tab)?.windowController as? TerminalController,
-                  let surface = controller.focusedSurface
+                  let surface = controller.focusedSurface?.surfaceModel
             else { continue }
-            _ = surface.surfaceModel?.perform(action: "text:claude --resume \(session)\\r")
+            // Pasted text waits at the prompt; return is sent as a key.
+            surface.sendText(command)
+            _ = surface.perform(action: "text:\\r")
         }
 
         var after = window
@@ -404,8 +427,8 @@ final class AgentSessionRestore {
             if let cwd = tab.cwd, FileManager.default.fileExists(atPath: cwd) {
                 config.workingDirectory = cwd
             }
-            if let session = tab.session, let command = Self.resumeCommand(session) {
-                config.initialInput = command
+            if let command = Self.resumeCommand(tab) {
+                config.initialInput = command + "\n"
             }
             // Each tab goes after the previous one to keep the saved order.
             let created = TerminalController.newTab(appDelegate.ghostty, from: after, withBaseConfig: config)
@@ -413,11 +436,19 @@ final class AgentSessionRestore {
         }
     }
 
-    /// The id comes from a file; allow only what a session id contains.
-    private static func resumeCommand(_ session: String) -> String? {
+    /// `cd` to where the session worked, then resume it. Nil without a valid id.
+    private static func resumeCommand(_ tab: SavedTab) -> String? {
+        // The id comes from a file; allow only what a session id contains.
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        guard !session.isEmpty, session.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
-        return "claude --resume \(session)\n"
+        guard let session = tab.session, !session.isEmpty,
+              session.unicodeScalars.allSatisfy({ allowed.contains($0) })
+        else { return nil }
+        var command = "claude --resume \(session)"
+        if let cwd = tab.sessionCwd, cwd != tab.cwd, FileManager.default.fileExists(atPath: cwd) {
+            let quoted = "'" + cwd.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            command = "cd -- \(quoted) && " + command
+        }
+        return command
     }
 
     private func finish() {

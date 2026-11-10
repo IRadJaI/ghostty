@@ -32,6 +32,8 @@ final class AgentSidebarModel: ObservableObject {
         var message: String?
         /// The agent's own session id, when its hooks report one.
         var sessionID: String?
+        /// The directory the agent's session works in; not always the shell's.
+        var sessionCwd: String?
         /// Token usage of the agent's session, when its transcript is found.
         var usage: AgentUsage?
         /// The agent finished while the user was looking elsewhere.
@@ -336,6 +338,7 @@ final class AgentSidebarModel: ObservableObject {
                     state: agent.state,
                     message: agent.message,
                     sessionID: agent.sessionID,
+                    sessionCwd: agent.sessionCwd,
                     usage: agent.kind == .claude
                         ? agent.sessionID.flatMap { AgentUsageTracker.shared.usage(for: $0) } : nil,
                     git: git
@@ -391,6 +394,7 @@ final class AgentSidebarModel: ObservableObject {
         var state: AgentState?
         var message: String?
         var sessionID: String?
+        var sessionCwd: String?
         /// Panes whose agent waits for the user.
         var waiting: [Ghostty.SurfaceView] = []
     }
@@ -432,7 +436,9 @@ final class AgentSidebarModel: ObservableObject {
             let priority = hook?.state.priority ?? 0
             if priority > bestPriority {
                 bestPriority = priority
-                best = AgentInfo(kind: kind, state: hook?.state, message: hook?.message, sessionID: hook?.sessionID)
+                best = AgentInfo(
+                    kind: kind, state: hook?.state, message: hook?.message,
+                    sessionID: hook?.sessionID, sessionCwd: hook?.cwd)
             }
         }
 
