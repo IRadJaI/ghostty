@@ -32,6 +32,8 @@ final class AgentSidebarModel: ObservableObject {
         var message: String?
         /// The agent's own session id, when its hooks report one.
         var sessionID: String?
+        /// Token usage of the agent's session, when its transcript is found.
+        var usage: AgentUsage?
         var git: AgentGitInfo?
 
         /// The agent is blocked on the user, or the terminal rang its bell.
@@ -174,6 +176,7 @@ final class AgentSidebarModel: ObservableObject {
     private var gitCache: [String: GitCacheEntry] = [:]
     private var recentUpdated: Date = .distantPast
     private var recentLoading = false
+    private var usageScanned: Date = .distantPast
     private let workQueue = DispatchQueue(label: "com.mitchellh.ghostty.agent-sidebar", qos: .utility)
 
     private static let refreshInterval: TimeInterval = 1.0
@@ -290,6 +293,8 @@ final class AgentSidebarModel: ObservableObject {
                     state: agent.state,
                     message: agent.message,
                     sessionID: agent.sessionID,
+                    usage: agent.kind == .claude
+                        ? agent.sessionID.flatMap { AgentUsageTracker.shared.usage(for: $0) } : nil,
                     git: git
                 ))
             }
@@ -308,6 +313,11 @@ final class AgentSidebarModel: ObservableObject {
         }
 
         applyNativeTabBarVisibility()
+
+        if !AgentSidebarDemo.enabled, Date().timeIntervalSince(usageScanned) > 2 {
+            usageScanned = Date()
+            AgentUsageTracker.shared.scan(Set(tabs.filter { $0.agent == .claude }.compactMap(\.sessionID)))
+        }
 
         if !AgentSidebarDemo.enabled {
             AgentNotifier.shared.update(tabs) { tab in

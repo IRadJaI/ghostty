@@ -27,6 +27,7 @@ enum AgentSidebarDefaults {
     static let notifySound = "AgentSidebarNotifySound"
     /// `ask`, `always` or `never`.
     static let restoreMode = "AgentSidebarRestoreMode"
+    static let statusBar = "AgentSidebarStatusBar"
 
     /// Claude Code itself, in an interactive login shell so `claude` is
     /// found on the user's PATH.
@@ -50,6 +51,7 @@ enum AgentSidebarDefaults {
         notifyDone: true,
         notifySound: true,
         restoreMode: "ask",
+        statusBar: true,
     ]
 }
 

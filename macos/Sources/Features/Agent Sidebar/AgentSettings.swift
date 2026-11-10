@@ -562,8 +562,15 @@ private struct AgentSettingsSidebar: View {
     @AppStorage(AgentSidebarDefaults.showGitBranch) private var showGitBranch = true
     @AppStorage(AgentSidebarDefaults.showGitChanges) private var showGitChanges = false
     @AppStorage(AgentSidebarDefaults.hideNativeTabBar) private var hideNativeTabBar = true
+    @AppStorage(AgentSidebarDefaults.statusBar) private var statusBar = true
 
     var body: some View {
+        Section {
+            Toggle("Show the agent status bar", isOn: $statusBar)
+        } footer: {
+            Text("A strip under the terminal with the agent's state, the size of its context and the tokens used by the session. Shown in tabs that run Claude Code.")
+        }
+
         Section {
             Picker("Sidebar", selection: $visible) {
                 Text("Expanded, with titles").tag(true)

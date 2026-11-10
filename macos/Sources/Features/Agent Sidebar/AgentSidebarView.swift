@@ -35,7 +35,10 @@ struct AgentSidebarContainer<Content: View>: View {
                             .frame(width: 1)
                     }
                 }
-            content
+            VStack(spacing: 0) {
+                content
+                AgentStatusBar(windowProvider: windowProvider)
+            }
         }
         .onChange(of: visible) { _ in AgentSidebarModel.shared.syncWindowChrome() }
         .onChange(of: width) { _ in AgentSidebarModel.shared.syncWindowChrome() }
@@ -436,6 +439,82 @@ private struct AgentSidebarAutofixBar: View {
 }
 
 // MARK: - Tab row
+
+/// The strip under the terminal: the tab's agent, its state and the token
+/// usage of its session. Hidden for tabs without an agent.
+private struct AgentStatusBar: View {
+    let windowProvider: () -> NSWindow?
+
+    @ObservedObject private var model = AgentSidebarModel.shared
+    @AppStorage(AgentSidebarDefaults.statusBar) private var enabled = true
+    @State private var windowID: ObjectIdentifier?
+
+    var body: some View {
+        Group {
+            if enabled, let tab = model.tabs.first(where: { $0.id == windowID }), let agent = tab.agent {
+                HStack(spacing: 6) {
+                    AgentSidebarIcon(agent: agent, state: tab.state)
+                        .scaleEffect(0.8)
+                    Text(agent.displayName)
+                        .fontWeight(.medium)
+                    if let state = tab.state {
+                        Text(state.label)
+                            .foregroundStyle(AgentSidebarStyle.color(for: state))
+                    }
+                    Spacer(minLength: 8)
+                    if let usage = tab.usage {
+                        metric("Context", usage.context)
+                            .agentTooltip("Tokens in the context of the latest request")
+                        separator
+                        metric("Session", usage.sessionTotal)
+                            .agentTooltip("""
+                                New tokens in this session: \(AgentSidebarFormat.tokens(usage.input)) in, \
+                                \(AgentSidebarFormat.tokens(usage.output)) out. \
+                                Another \(AgentSidebarFormat.tokens(usage.cacheRead)) were read from the cache.
+                                """)
+                        if let model = usage.model {
+                            separator
+                            Text(model)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .font(.caption)
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(height: 24)
+                .background { AgentSidebarBackground() }
+                .overlay(alignment: .top) { Divider() }
+            }
+        }
+        .onAppear(perform: resolveWindow)
+        .onReceive(model.objectWillChange) { _ in
+            if windowID == nil {
+                resolveWindow()
+            }
+        }
+    }
+
+    private var separator: some View {
+        Text("·").foregroundStyle(.tertiary)
+    }
+
+    private func metric(_ name: String, _ count: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(name)
+                .foregroundStyle(.secondary)
+            Text(AgentSidebarFormat.tokens(count))
+                .monospacedDigit()
+        }
+    }
+
+    /// Not from `body`: see `AgentSidebarView.resolveWindow`.
+    private func resolveWindow() {
+        if let window = windowProvider() {
+            windowID = ObjectIdentifier(window)
+        }
+    }
+}
 
 /// A tab in the collapsed sidebar.
 private struct AgentSidebarRailItem: View {
