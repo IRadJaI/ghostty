@@ -504,7 +504,7 @@ final class AgentSidebarModel: ObservableObject {
     static let collapsedWidth: CGFloat = 46
 
     static func clampedWidth(_ width: Double) -> CGFloat {
-        CGFloat(min(max(width, 180), 480))
+        CGFloat(min(max(width, 210), 480))
     }
 
     /// Window content size that leaves a terminal of `terminalSize` next to

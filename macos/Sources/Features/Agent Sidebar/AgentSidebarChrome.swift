@@ -13,18 +13,27 @@ import SwiftUI
 @MainActor
 enum AgentSidebarTitlebarBackdrop {
     private static let identifier = NSUserInterfaceItemIdentifier("AgentSidebarTitlebarBackdrop")
+    private static let titleIdentifier = NSUserInterfaceItemIdentifier("AgentSidebarTitlebarTitle")
 
     /// Shows the strip at `width`, or removes it when `width` is nil.
+    ///
+    /// The system title would start next to the window buttons and run across
+    /// the sidebar's edge, so it is replaced with a label right of the strip.
     static func sync(window: NSWindow, width: CGFloat?) {
         let container = (window as? TerminalWindow)?.titlebarContainer?
             .firstDescendant(withClassName: "NSTitlebarView")
         let existing = container?.subviews.first { $0.identifier == identifier }
+        let title = container?.subviews.first { $0.identifier == titleIdentifier } as? TitleLabel
 
         guard let container, let width,
               !window.styleMask.contains(.fullScreen),
               container.bounds.height > 0
         else {
             existing?.removeFromSuperview()
+            if let title {
+                title.removeFromSuperview()
+                window.titleVisibility = .visible
+            }
             return
         }
 
@@ -33,22 +42,55 @@ enum AgentSidebarTitlebarBackdrop {
             if existing.frame != frame {
                 existing.frame = frame
             }
-            return
+        } else {
+            let backdrop = NSVisualEffectView(frame: frame)
+            backdrop.identifier = identifier
+            backdrop.material = .sidebar
+            backdrop.blendingMode = .behindWindow
+            backdrop.state = .followsWindowActiveState
+            backdrop.autoresizingMask = [.height]
+
+            let separator = NSBox(frame: NSRect(x: width - 1, y: 0, width: 1, height: frame.height))
+            separator.boxType = .separator
+            separator.autoresizingMask = [.height, .minXMargin]
+            backdrop.addSubview(separator)
+
+            container.addSubview(backdrop, positioned: .below, relativeTo: nil)
         }
 
-        let backdrop = NSVisualEffectView(frame: frame)
-        backdrop.identifier = identifier
-        backdrop.material = .sidebar
-        backdrop.blendingMode = .behindWindow
-        backdrop.state = .followsWindowActiveState
-        backdrop.autoresizingMask = [.height]
+        if window.titleVisibility != .hidden {
+            window.titleVisibility = .hidden
+        }
+        let label = title ?? {
+            let label = TitleLabel(labelWithString: "")
+            label.identifier = titleIdentifier
+            label.font = .titleBarFont(ofSize: NSFont.systemFontSize)
+            label.lineBreakMode = .byTruncatingMiddle
+            container.addSubview(label)
+            return label
+        }()
+        if label.stringValue != window.title {
+            label.stringValue = window.title
+        }
+        let color: NSColor = window.isKeyWindow ? .labelColor : .secondaryLabelColor
+        if label.textColor != color {
+            label.textColor = color
+        }
+        let height = label.intrinsicContentSize.height
+        let inset: CGFloat = 12
+        let labelFrame = NSRect(
+            x: width + inset,
+            y: ((container.bounds.height - height) / 2).rounded(),
+            width: max(0, container.bounds.width - width - inset * 2),
+            height: height)
+        if label.frame != labelFrame {
+            label.frame = labelFrame
+        }
+    }
 
-        let separator = NSBox(frame: NSRect(x: width - 1, y: 0, width: 1, height: frame.height))
-        separator.boxType = .separator
-        separator.autoresizingMask = [.height, .minXMargin]
-        backdrop.addSubview(separator)
-
-        container.addSubview(backdrop, positioned: .below, relativeTo: nil)
+    /// A title that leaves clicks to the titlebar (dragging, double click).
+    private final class TitleLabel: NSTextField {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
 

@@ -244,6 +244,8 @@ struct AgentSidebarView: View {
 
             Text("Tabs")
                 .font(.headline)
+                .lineLimit(1)
+                .fixedSize()
 
             Spacer(minLength: 4)
 
@@ -330,6 +332,7 @@ struct AgentSidebarView: View {
                     .font(.caption.weight(.semibold))
                     .frame(width: 20)
                 Text("Recent agent sessions")
+                    .lineLimit(1)
                     .font(.callout.weight(.semibold))
                 Spacer()
             }
