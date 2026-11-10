@@ -69,21 +69,6 @@ jobs:
           mkdir -p "$RUNNER_TEMP/shots"
           grep -A6 "error:" "$RUNNER_TEMP/xcodebuild.log" | head -200 | tee "$RUNNER_TEMP/shots/build-errors.txt" || true
 
-      # The Ghostty backend of wtcli (WTA's terminal CLI) lives in the
-      # AgentTerm repository; build it to exercise the control socket.
-      - name: Build wtcli-ghostty
-        continue-on-error: true
-        run: |
-          mkdir -p "$RUNNER_TEMP/shots"
-          {
-            export PATH="$HOME/.cargo/bin:$PATH"
-            git clone --quiet --depth 1 -b macos-port https://github.com/IRadJaI/AgentTerm "$RUNNER_TEMP/AgentTerm"
-            cargo --version
-            cargo build --manifest-path "$RUNNER_TEMP/AgentTerm/tools/wta/macos/wtcli-ghostty/Cargo.toml"
-            ls -la "$RUNNER_TEMP/AgentTerm/tools/wta/macos/wtcli-ghostty/target/debug/wtcli"
-          } > "$RUNNER_TEMP/shots/wtcli-build.txt" 2>&1 || true
-          tail -5 "$RUNNER_TEMP/shots/wtcli-build.txt"
-
       # Ad-hoc signature so the downloaded app can start on Apple Silicon.
       - name: Ad-hoc sign
         run: codesign --force --deep --sign - macos/build/Debug/Ghostty.app
@@ -95,9 +80,7 @@ jobs:
       # light and dark appearance, so the UI can be reviewed without a Mac.
       - name: Screenshots
         continue-on-error: true
-        run: |
-          agent-sidebar/ci-screenshots.sh "$PWD/macos/build/Debug/Ghostty.app" "$RUNNER_TEMP/shots" \
-            "$RUNNER_TEMP/AgentTerm/tools/wta/macos/wtcli-ghostty/target/debug/wtcli"
+        run: agent-sidebar/ci-screenshots.sh "$PWD/macos/build/Debug/Ghostty.app" "$RUNNER_TEMP/shots"
 
       - name: Upload screenshots
         if: always()
