@@ -1020,6 +1020,14 @@ class AppDelegate: NSObject,
     }
 
     @IBAction func checkForUpdates(_ sender: Any?) {
+        // agent-sidebar: an update would replace the fork with upstream.
+        if Bundle.main.bundleIdentifier?.hasPrefix("com.mitchellh.") != true {
+            let alert = NSAlert()
+            alert.messageText = "Updates are turned off in this build"
+            alert.informativeText = "Rebuild the app from the fork's repository to update it."
+            alert.runModal()
+            return
+        }
         updateController.checkForUpdates()
         // UpdateSimulator.happyPath.simulate(with: updateViewModel)
     }

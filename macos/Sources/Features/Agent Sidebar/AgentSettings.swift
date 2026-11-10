@@ -277,6 +277,28 @@ extension AgentSettingsStore {
             set: { self.set(key, String(format: format, $0)) })
     }
 
+    /// A color stored as `#rrggbb`.
+    func color(_ key: String, default fallback: Color) -> Binding<Color> {
+        Binding(
+            get: {
+                guard let hex = self.value(key)?.trimmingCharacters(in: CharacterSet(charactersIn: "#")),
+                      hex.count == 6, let value = UInt32(hex, radix: 16)
+                else { return fallback }
+                return Color(
+                    red: Double((value >> 16) & 0xff) / 255,
+                    green: Double((value >> 8) & 0xff) / 255,
+                    blue: Double(value & 0xff) / 255)
+            },
+            set: { color in
+                guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return }
+                self.set(key, String(
+                    format: "#%02x%02x%02x",
+                    Int((rgb.redComponent * 255).rounded()),
+                    Int((rgb.greenComponent * 255).rounded()),
+                    Int((rgb.blueComponent * 255).rounded())))
+            })
+    }
+
     func flag(_ key: String, default fallback: Bool) -> Binding<Bool> {
         Binding(
             get: { self.value(key).map { $0 == "true" } ?? fallback },
@@ -342,6 +364,36 @@ private struct AgentSettingsAppearance: View {
             Text("Background")
         } footer: {
             Text("Blur and Liquid Glass show through only when the opacity is below 100%.")
+        }
+
+        Section {
+            Picker("Icon", selection: store.text("macos-icon", default: "official")) {
+                Text("Official").tag("official")
+                Text("Blueprint").tag("blueprint")
+                Text("Chalkboard").tag("chalkboard")
+                Text("Microchip").tag("microchip")
+                Text("Glass").tag("glass")
+                Text("Holographic").tag("holographic")
+                Text("Paper").tag("paper")
+                Text("Retro").tag("retro")
+                Text("X-ray").tag("xray")
+                Divider()
+                Text("Own colors").tag("custom-style")
+            }
+            if store.value("macos-icon") == "custom-style" {
+                Picker("Frame", selection: store.text("macos-icon-frame", default: "aluminum")) {
+                    Text("Aluminum").tag("aluminum")
+                    Text("Beige").tag("beige")
+                    Text("Plastic").tag("plastic")
+                    Text("Chrome").tag("chrome")
+                }
+                ColorPicker("Ghost", selection: store.color("macos-icon-ghost-color", default: .white), supportsOpacity: false)
+                ColorPicker("Screen", selection: store.color("macos-icon-screen-color", default: .blue), supportsOpacity: false)
+            }
+        } header: {
+            Text("App icon")
+        } footer: {
+            Text("Changes the icon in the Dock and the app switcher.")
         }
 
         Section("Cursor") {
