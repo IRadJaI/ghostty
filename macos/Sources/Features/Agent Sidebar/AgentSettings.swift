@@ -247,16 +247,20 @@ struct AgentSettingsView: View {
             }
             .navigationSplitViewColumnWidth(190)
         } detail: {
-            Form {
-                switch pane ?? .appearance {
-                case .appearance: AgentSettingsAppearance(store: store)
-                case .behavior: AgentSettingsBehavior(store: store)
-                case .sidebar: AgentSettingsSidebar()
-                case .agents: AgentSettingsAgents()
-                case .advanced: AgentSettingsAdvanced(store: store)
+            // Off the top edge, the form is clipped below the titlebar.
+            VStack(spacing: 0) {
+                Divider()
+                Form {
+                    switch pane ?? .appearance {
+                    case .appearance: AgentSettingsAppearance(store: store)
+                    case .behavior: AgentSettingsBehavior(store: store)
+                    case .sidebar: AgentSettingsSidebar()
+                    case .agents: AgentSettingsAgents()
+                    case .advanced: AgentSettingsAdvanced(store: store)
+                    }
                 }
+                .formStyle(.grouped)
             }
-            .formStyle(.grouped)
             .navigationTitle((pane ?? .appearance).rawValue)
         }
     }
@@ -886,8 +890,55 @@ private struct AgentSettingsAgents: View {
 
 private struct AgentSettingsAdvanced: View {
     @ObservedObject var store: AgentSettingsStore
+    @ObservedObject private var upstream = AgentUpstreamCheck.shared
+    @AppStorage(AgentSidebarDefaults.upstreamInterval) private var upstreamInterval = "weekly"
+
+    private var checkStatus: String {
+        if upstream.checking { return "Checking…" }
+        if let failure = upstream.failure { return "Check failed: \(failure)" }
+        guard let checked = upstream.lastChecked else { return "Not checked yet" }
+        let formatter = RelativeDateTimeFormatter()
+        return "Checked \(formatter.localizedString(for: checked, relativeTo: Date()))"
+    }
 
     var body: some View {
+        Section {
+            LabeledContent("This build is based on") {
+                Text("Ghostty \(upstream.base)")
+            }
+            LabeledContent("Latest Ghostty") {
+                HStack(spacing: 8) {
+                    if upstream.updateAvailable, let notes = upstream.releaseNotes {
+                        Link("Release notes", destination: notes)
+                    }
+                    if let latest = upstream.latest {
+                        Label(latest, systemImage: upstream.updateAvailable
+                            ? "arrow.up.circle.fill" : "checkmark.circle.fill")
+                            .foregroundStyle(upstream.updateAvailable ? .orange : .green)
+                    } else {
+                        Text("Unknown").foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Picker("Check for a new Ghostty", selection: $upstreamInterval) {
+                Text("Every day").tag("daily")
+                Text("Every week").tag("weekly")
+                Text("Every month").tag("monthly")
+                Text("Never").tag("never")
+            }
+            LabeledContent {
+                Button("Check Now") { upstream.check() }
+                    .disabled(upstream.checking)
+            } label: {
+                Text(checkStatus)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Ghostty releases")
+        } footer: {
+            Text("When a newer Ghostty comes out you get a notification. Nothing is downloaded or installed: the fork is updated by rebuilding it on the new version.")
+        }
+
         Section {
             LabeledContent("Ghostty config file") {
                 Button("Open in Editor") {

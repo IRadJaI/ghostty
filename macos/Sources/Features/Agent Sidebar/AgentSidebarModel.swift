@@ -203,6 +203,7 @@ final class AgentSidebarModel: ObservableObject {
 
         AgentSidebarMenu.shared.install()
         AgentHookInstaller.refreshInstalledScript()
+        AgentUpstreamCheck.shared.start()
 
         let timer = Timer(timeInterval: Self.refreshInterval, repeats: true) { _ in
             Task { @MainActor in

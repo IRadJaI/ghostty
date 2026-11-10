@@ -132,12 +132,21 @@ final class AgentNotifier {
 
     /// True for the notifications posted here.
     nonisolated static func isOwn(_ notification: UNNotification) -> Bool {
-        notification.request.content.userInfo[tabKey] != nil
+        let info = notification.request.content.userInfo
+        return info[tabKey] != nil || info[AgentUpstreamCheck.notificationKey] != nil
     }
 
     /// Switches to the tab of a clicked notification.
     nonisolated static func handle(_ response: UNNotificationResponse) -> Bool {
-        guard let tabID = response.notification.request.content.userInfo[tabKey] as? String else {
+        let info = response.notification.request.content.userInfo
+        if info[AgentUpstreamCheck.notificationKey] != nil {
+            Task { @MainActor in
+                UserDefaults.standard.set("Advanced", forKey: "AgentSettingsPane")
+                AgentSettingsWindowController.shared.show()
+            }
+            return true
+        }
+        guard let tabID = info[tabKey] as? String else {
             return false
         }
         Task { @MainActor in

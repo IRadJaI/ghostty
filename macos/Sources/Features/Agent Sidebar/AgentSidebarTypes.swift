@@ -32,6 +32,11 @@ enum AgentSidebarDefaults {
     /// `ask`, `always` or `never`.
     static let restoreMode = "AgentSidebarRestoreMode"
     static let statusBar = "AgentSidebarStatusBar"
+    /// `daily`, `weekly`, `monthly` or `never`.
+    static let upstreamInterval = "AgentSidebarUpstreamInterval"
+    static let upstreamLastCheck = "AgentSidebarUpstreamLastCheck"
+    static let upstreamLatest = "AgentSidebarUpstreamLatest"
+    static let upstreamNotified = "AgentSidebarUpstreamNotified"
 
     /// Claude Code itself, in an interactive login shell so `claude` is
     /// found on the user's PATH.
@@ -59,6 +64,7 @@ enum AgentSidebarDefaults {
         paneRing: true,
         restoreMode: "ask",
         statusBar: true,
+        upstreamInterval: "weekly",
     ]
 }
 
