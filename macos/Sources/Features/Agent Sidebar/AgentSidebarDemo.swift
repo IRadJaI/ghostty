@@ -28,6 +28,7 @@ enum AgentSidebarDemo {
             Tab(
                 id: index == 0 ? realWindow : ObjectIdentifier(anchors[index]),
                 groupID: groupID,
+                stableID: "demo-\(index)",
                 title: title,
                 pwd: home + path,
                 isSelected: selected,

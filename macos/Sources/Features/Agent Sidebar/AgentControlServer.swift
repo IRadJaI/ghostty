@@ -153,6 +153,20 @@ final class AgentControlServer {
         if method == "publish" {
             if let event = params["event"] {
                 broadcast(event)
+                // The agent's error-fix progress drives the sidebar's bar.
+                if let object = event as? [String: Any],
+                   object["method"] as? String == "autofix_state",
+                   let eventParams = object["params"] as? [String: Any] {
+                    let state = AgentSidebarModel.Autofix(
+                        state: eventParams["state"] as? String ?? "cleared",
+                        paneID: eventParams["pane_id"] as? String ?? "",
+                        summary: eventParams["summary"] as? String ?? ""
+                    )
+                    let tabID = eventParams["tab_id"] as? String
+                    DispatchQueue.main.async {
+                        AgentSidebarModel.shared.applyAutofix(state, tabID: tabID)
+                    }
+                }
             }
             Self.write(fd, ["ok": true, "result": ["ok": true]])
             close(fd)

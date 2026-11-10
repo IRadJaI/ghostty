@@ -61,9 +61,21 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | grep -E "error:|warning: .*Agent Sidebar|BUILD (SUCCEEDED|FAILED)|^\*\*" || true
           grep -q "BUILD SUCCEEDED" "$RUNNER_TEMP/xcodebuild.log"
 
+      # On a failed build, publish just the compiler errors (see the
+      # "Publish screenshots" step) so they are quick to read.
       - name: Compiler errors
         if: failure()
-        run: grep -n -B2 -A12 "error:" "$RUNNER_TEMP/xcodebuild.log" | head -400 || true
+        run: |
+          mkdir -p "$RUNNER_TEMP/shots"
+          grep -A6 "error:" "$RUNNER_TEMP/xcodebuild.log" | head -200 | tee "$RUNNER_TEMP/shots/build-errors.txt" || true
+
+      # The Ghostty backend of wtcli (WTA's terminal CLI) lives in the
+      # AgentTerm repository; build it to exercise the control socket.
+      - name: Build wtcli-ghostty
+        continue-on-error: true
+        run: |
+          git clone --quiet --depth 1 -b macos-port https://github.com/IRadJaI/AgentTerm "$RUNNER_TEMP/AgentTerm"
+          RUSTUP_TOOLCHAIN=stable cargo build --quiet --manifest-path "$RUNNER_TEMP/AgentTerm/tools/wta/macos/wtcli-ghostty/Cargo.toml"
 
       # Ad-hoc signature so the downloaded app can start on Apple Silicon.
       - name: Ad-hoc sign
@@ -76,7 +88,9 @@ jobs:
       # light and dark appearance, so the UI can be reviewed without a Mac.
       - name: Screenshots
         continue-on-error: true
-        run: agent-sidebar/ci-screenshots.sh "$PWD/macos/build/Debug/Ghostty.app" "$RUNNER_TEMP/shots"
+        run: |
+          agent-sidebar/ci-screenshots.sh "$PWD/macos/build/Debug/Ghostty.app" "$RUNNER_TEMP/shots" \
+            "$RUNNER_TEMP/AgentTerm/tools/wta/macos/wtcli-ghostty/target/debug/wtcli"
 
       - name: Upload screenshots
         if: always()
@@ -90,10 +104,11 @@ jobs:
       # Also publish the screenshots to a side branch so they can be viewed
       # (and fetched with git) without downloading an artifact.
       - name: Publish screenshots
+        if: always()
         continue-on-error: true
         run: |
-          cd "$RUNNER_TEMP/shots"
-          ls *.png >/dev/null 2>&1 || exit 0
+          cd "$RUNNER_TEMP/shots" 2>/dev/null || exit 0
+          [ -n "$(ls)" ] || exit 0
           echo "Screenshots of commit $GITHUB_SHA" > README.md
           git init -q -b agent-sidebar-screenshots
           git config user.name "github-actions[bot]"

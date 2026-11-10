@@ -155,6 +155,12 @@ struct AgentSidebarView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             }
+            if let tab = ownSelectedTab, let state = model.autofix[tab.stableID] {
+                Divider()
+                AgentSidebarAutofixBar(state: state) { action in
+                    model.sendAutofixAction(action, tabID: tab.stableID)
+                }
+            }
         }
         .background {
             AgentSidebarBackground()
@@ -210,6 +216,12 @@ struct AgentSidebarView: View {
             }
         }
         return tabs
+    }
+
+    /// The selected tab of the window this sidebar lives in.
+    private var ownSelectedTab: AgentSidebarModel.Tab? {
+        guard let groupID = model.tabs.first(where: { $0.id == windowID })?.groupID else { return nil }
+        return model.tabs.first { $0.groupID == groupID && $0.isSelected }
     }
 
     private var rowOptions: AgentSidebarRow.Options {
@@ -364,6 +376,63 @@ private struct AgentSidebarBackground: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+// MARK: - Error-fix bar
+
+/// Shown at the bottom of the sidebar when a command failed in the selected
+/// tab and its agent pane offered to fix it.
+private struct AgentSidebarAutofixBar: View {
+    let state: AgentSidebarModel.Autofix
+    /// Called with the event method to send to the agent pane.
+    let send: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            switch state.state {
+            case "pending":
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.75)
+                    .frame(width: 18, height: 18)
+                Text("Analyzing the error…")
+                    .font(.callout)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            case "review":
+                Image(systemName: "wrench.and.screwdriver")
+                    .foregroundStyle(Color.green)
+                    .frame(width: 18)
+                Text("Fix ready")
+                    .font(.callout)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Button("Run") { send("autofix_execute") }
+                    .controlSize(.small)
+                Button {
+                    send("autofix_dismiss_suggestion")
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss")
+                .accessibilityLabel("Dismiss fix")
+            default:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color.yellow)
+                    .frame(width: 18)
+                Text(state.summary.isEmpty ? "Command failed" : state.summary)
+                    .font(.callout)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+                Button("Fix") { send("autofix_execute_from_detected") }
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
 }
 
 // MARK: - Tab row

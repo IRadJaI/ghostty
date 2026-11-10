@@ -25,6 +25,7 @@ final class AgentSidebarMenu: NSObject, NSMenuItemValidation {
         menu.addItem(item("Show Agent Tabs Only", #selector(toggleAgentsOnly(_:)), key: "g"))
         menu.addItem(item("Go to Next Tab Needing Attention", #selector(nextAttention(_:)), key: "a"))
         menu.addItem(item("Open Agent Pane", #selector(openAgentPane(_:)), key: "p"))
+        menu.addItem(item("Fix Last Error", #selector(fixLastError(_:)), key: "."))
     }
 
     private func item(_ title: String, _ action: Selector, key: String) -> NSMenuItem {
@@ -40,6 +41,10 @@ final class AgentSidebarMenu: NSObject, NSMenuItemValidation {
 
     @objc func toggleAgentsOnly(_ sender: Any?) {
         toggle(AgentSidebarDefaults.agentsOnly)
+    }
+
+    @objc func fixLastError(_ sender: Any?) {
+        AgentSidebarModel.shared.fixLastError()
     }
 
     @objc func openAgentPane(_ sender: Any?) {

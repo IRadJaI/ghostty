@@ -21,6 +21,8 @@ final class AgentSidebarModel: ObservableObject {
         let id: ObjectIdentifier
         /// Identity of the tab group (or of the window when it has no group).
         let groupID: ObjectIdentifier
+        /// The tab id agent tooling uses (see `AgentControlOperations`).
+        var stableID: String = ""
         var title: String
         var pwd: String?
         var isSelected: Bool
@@ -45,6 +47,57 @@ final class AgentSidebarModel: ObservableObject {
 
     private(set) var recentSessions: [AgentRecentSession] = [] {
         willSet { objectWillChange.send() }
+    }
+
+    /// Progress of the agent's fix for a failed command, as reported by the
+    /// agent pane (`autofix_state` events, the same ones Windows Terminal's
+    /// bottom bar listens to).
+    struct Autofix: Equatable {
+        /// `detected`, `pending`, `review` or `cleared`.
+        var state: String
+        var paneID: String
+        var summary: String
+    }
+
+    /// Error-fix state per stable tab id.
+    private(set) var autofix: [String: Autofix] = [:] {
+        willSet { objectWillChange.send() }
+    }
+
+    func applyAutofix(_ state: Autofix, tabID: String?) {
+        // Without a tab id the event is about the tab the user is in.
+        let key = tabID ?? tabs.first { windows[$0.id]?.window === NSApp.keyWindow }?.stableID ?? ""
+        guard !key.isEmpty else { return }
+        if state.state == "cleared" {
+            if autofix[key] != nil {
+                autofix[key] = nil
+            }
+        } else if autofix[key] != state {
+            autofix[key] = state
+        }
+    }
+
+    /// Sends one of the agent pane's error-fix actions for a tab:
+    /// `autofix_execute_from_detected`, `autofix_execute` or
+    /// `autofix_dismiss_suggestion`.
+    func sendAutofixAction(_ method: String, tabID: String) {
+        guard let state = autofix[tabID] else { return }
+        AgentControlServer.shared.broadcast([
+            "type": "event",
+            "method": method,
+            "params": ["pane_id": state.paneID, "tab_id": tabID],
+        ])
+        if method == "autofix_dismiss_suggestion" {
+            autofix[tabID] = nil
+        }
+    }
+
+    /// Asks the agent to fix the last failed command of the key window's tab.
+    func fixLastError() {
+        guard let tab = tabs.first(where: { windows[$0.id]?.window === NSApp.keyWindow }),
+              let state = autofix[tab.stableID]
+        else { return }
+        sendAutofixAction(state.state == "review" ? "autofix_execute" : "autofix_execute_from_detected", tabID: tab.stableID)
     }
 
     /// Height of the titlebar strip above the window's content view, or 0
@@ -176,6 +229,7 @@ final class AgentSidebarModel: ObservableObject {
                 result.append(Tab(
                     id: id,
                     groupID: groupID,
+                    stableID: AgentControlOperations.stableTabID(controller),
                     title: title,
                     pwd: pwd,
                     isSelected: tabWindow === selectedWindow,
@@ -193,6 +247,7 @@ final class AgentSidebarModel: ObservableObject {
             result = AgentSidebarDemo.tabs(groupID: first.groupID, realWindow: first.id)
             if recentSessions.isEmpty {
                 recentSessions = AgentSidebarDemo.recentSessions
+                autofix["demo-0"] = Autofix(state: "detected", paneID: "demo", summary: "Command failed (exit 127)")
             }
         }
         if result != tabs {
