@@ -20,62 +20,71 @@ struct AgentSidebarContainer<Content: View>: View {
     }
 
     @AppStorage(AgentSidebarDefaults.peekOnHover) private var peekOnHover = true
-    /// The full sidebar is shown over the terminal while the rail is hovered.
-    @State private var peeking = false
+    /// The collapsed sidebar is widened over the terminal while hovered.
+    @State private var hovered = false
+    /// Keeps the rail widened without a pointer, for UI snapshots.
+    @AppStorage("AgentSidebarForcePeek") private var forcePeek = false
     @State private var peekWork: DispatchWorkItem?
 
-    /// Delayed both ways: the pointer crosses the rail on its way elsewhere,
-    /// and leaves it for a moment on its way into the floating sidebar.
+    private var peeking: Bool { hovered || forcePeek }
+
+    /// Delayed, so that a pointer crossing the rail does not open it.
     private func setPeek(_ show: Bool, after delay: TimeInterval) {
         peekWork?.cancel()
-        let work = DispatchWorkItem { peeking = show }
+        let work = DispatchWorkItem { hovered = show }
         peekWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
+    private var separator: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: 1)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            // The divider and the resize handle sit on the sidebar's own
-            // backdrop; a separate divider would show the bare window.
-            AgentSidebarView(windowProvider: windowProvider, compact: !visible)
-                .frame(width: AgentSidebarModel.occupiedWidth(visible: visible, width: width))
-                .onHover { inside in
-                    if !visible, peekOnHover {
-                        setPeek(inside, after: inside ? 0.25 : 0.3)
-                    }
-                }
-                .overlay(alignment: .trailing) {
-                    if visible {
+            if visible {
+                // The divider and the resize handle sit on the sidebar's own
+                // backdrop; a separate divider would show the bare window.
+                AgentSidebarView(windowProvider: windowProvider)
+                    .frame(width: AgentSidebarModel.occupiedWidth(visible: true, width: width))
+                    .overlay(alignment: .trailing) {
                         AgentSidebarResizeHandle(width: $width)
                             .frame(width: AgentSidebarResizeHandle.hitWidth)
-                    } else {
-                        Rectangle()
-                            .fill(Color(nsColor: .separatorColor))
-                            .frame(width: 1)
                     }
-                }
+            } else {
+                // The rail is drawn as an overlay below, so that widening it
+                // on hover covers the terminal instead of resizing it.
+                Color.clear
+                    .frame(width: AgentSidebarModel.occupiedWidth(visible: false, width: width))
+            }
             VStack(spacing: 0) {
                 content
                 AgentStatusBar(windowProvider: windowProvider)
             }
         }
         .overlay(alignment: .leading) {
-            if !visible, peeking {
-                AgentSidebarView(windowProvider: windowProvider, floating: true)
-                    .frame(width: AgentSidebarModel.clampedWidth(width))
-                    .overlay(alignment: .trailing) {
-                        Rectangle()
-                            .fill(Color(nsColor: .separatorColor))
-                            .frame(width: 1)
+            if !visible {
+                // One view in both widths: the icons stay where they are and
+                // the titles appear next to them.
+                AgentSidebarView(windowProvider: windowProvider, compact: true, peeking: peeking)
+                    .frame(width: peeking
+                        ? AgentSidebarModel.clampedWidth(width)
+                        : AgentSidebarModel.occupiedWidth(visible: false, width: width))
+                    .overlay(alignment: .trailing) { separator }
+                    .shadow(color: .black.opacity(peeking ? 0.35 : 0), radius: 12, x: 4)
+                    .onHover { inside in
+                        if peekOnHover || !inside {
+                            setPeek(inside, after: inside ? 0.25 : 0.3)
+                        }
                     }
-                    .shadow(color: .black.opacity(0.35), radius: 12, x: 4)
-                    .onHover { setPeek($0, after: 0.3) }
-                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .animation(.easeOut(duration: 0.15), value: peeking)
+        .animation(.easeOut(duration: 0.12), value: peeking)
         .onChange(of: visible) { _ in
-            peeking = false
+            peekWork?.cancel()
+            hovered = false
             AgentSidebarModel.shared.syncWindowChrome()
         }
         .onChange(of: width) { _ in AgentSidebarModel.shared.syncWindowChrome() }
@@ -87,8 +96,8 @@ struct AgentSidebarView: View {
     let windowProvider: () -> NSWindow?
     /// Collapsed to a rail of tab icons.
     var compact = false
-    /// Shown over the terminal while the rail is hovered.
-    var floating = false
+    /// The rail is widened over the terminal and shows titles.
+    var peeking = false
 
     @ObservedObject private var model = AgentSidebarModel.shared
 
@@ -117,7 +126,7 @@ struct AgentSidebarView: View {
         }
         .background {
             // Over the terminal the backdrop has to hide what is under it.
-            if floating {
+            if peeking {
                 AgentSidebarMaterial()
             } else {
                 AgentSidebarBackground()
@@ -182,14 +191,14 @@ struct AgentSidebarView: View {
 
     /// The collapsed sidebar: one icon per tab.
     private var railContent: some View {
-        VStack(spacing: 6) {
-            railButton("sidebar.left", "Show tab sidebar") { visible = true }
+        VStack(alignment: .leading, spacing: 6) {
+            railButton("sidebar.left", "Keep the sidebar open") { visible = true }
             Divider()
-                .padding(.horizontal, 8)
+                .padding(.trailing, 5)
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 4) {
-                    ForEach(Array(visibleTabs.enumerated()), id: \.element.id) { index, tab in
-                        AgentSidebarRailItem(tab: tab, number: index + 1) { model.select(tab) }
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(visibleTabs) { tab in
+                        AgentSidebarRailItem(tab: tab, expanded: peeking) { model.select(tab) }
                             .contextMenu { tabMenu(tab) }
                     }
                 }
@@ -199,14 +208,24 @@ struct AgentSidebarView: View {
             railButton("sparkles", "Open agent pane") { model.openAgentPane(from: windowProvider()) }
         }
         .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Leading, not centered: nothing moves when the rail widens.
+        .padding(.leading, 5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func railButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .frame(width: 30, height: 24)
-                .contentShape(Rectangle())
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .frame(width: AgentSidebarRailItem.iconWidth, height: 24)
+                if peeking {
+                    Text(label)
+                        .font(.callout)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .agentTooltip(label)
@@ -283,13 +302,13 @@ struct AgentSidebarView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Button {
-                visible = floating
+                visible = false
             } label: {
                 Image(systemName: "sidebar.left")
             }
             .buttonStyle(.plain)
-            .agentTooltip(floating ? "Keep the sidebar open" : "Hide tab sidebar")
-            .accessibilityLabel(floating ? "Keep the sidebar open" : "Hide tab sidebar")
+            .agentTooltip("Hide tab sidebar")
+            .accessibilityLabel("Hide tab sidebar")
 
             Text("Tabs")
                 .font(.headline)
@@ -612,33 +631,69 @@ struct AgentSidebarMonogram {
 
 /// A tab in the collapsed sidebar.
 private struct AgentSidebarRailItem: View {
+    static let iconWidth: CGFloat = 36
+
     let tab: AgentSidebarModel.Tab
-    let number: Int
+    /// Show the title next to the icon.
+    var expanded = false
     let select: () -> Void
 
     @State private var hovering = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            AgentSidebarIcon(agent: tab.agent, state: tab.state, badge: badge)
-            Text(monogram.letters)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(width: 26, height: 14)
-                .background(monogram.color, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+        HStack(spacing: 8) {
+            VStack(spacing: 0) {
+                AgentSidebarIcon(agent: tab.agent, state: tab.state, badge: badge)
+                Text(monogram.letters)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 14)
+                    .background(monogram.color, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+            .frame(width: Self.iconWidth, height: 44)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.callout.weight(tab.isSelected || tab.unread ? .semibold : .regular))
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(tab.state.map { AgentSidebarStyle.color(for: $0) } ?? Color.secondary)
+                        .lineLimit(1)
+                        .truncationMode(tab.state == nil ? .head : .tail)
+                }
+                Spacer(minLength: 8)
+            }
         }
-        .frame(width: 36, height: 44)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.primary.opacity(tab.isSelected ? 0.16 : (hovering ? 0.07 : 0)))
         )
+        .padding(.trailing, expanded ? 6 : 0)
         .contentShape(Rectangle())
         .onTapGesture(perform: select)
         .onHover { hovering = $0 }
-        .agentTooltip(tooltip)
+        .agentTooltip(expanded ? "" : tooltip)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tooltip)
         .accessibilityAddTraits(tab.isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var title: String {
+        var title = tab.title.trimmingCharacters(in: .whitespaces)
+        if title.hasPrefix("✳") {
+            title = String(title.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        return title.isEmpty ? "Terminal" : title
+    }
+
+    private var subtitle: String {
+        if let state = tab.state {
+            if state == .waiting, let message = tab.message, !message.isEmpty { return message }
+            return state.label
+        }
+        return tab.pwd.map { AgentSidebarFormat.abbreviate(path: $0) } ?? ""
     }
 
     private var monogram: AgentSidebarMonogram {

@@ -199,7 +199,7 @@ private struct AgentTooltipView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PassthroughView, context: Context) {
-        nsView.toolTip = text
+        nsView.toolTip = text.isEmpty ? nil : text
     }
 
     final class PassthroughView: NSView {
