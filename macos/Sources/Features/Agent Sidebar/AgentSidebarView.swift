@@ -299,6 +299,8 @@ struct AgentSidebarView: View {
             Section("Window") {
                 Toggle("Hide native tab bar", isOn: $hideNativeTabBar)
             }
+            Divider()
+            Button("Settings…") { AgentSettingsWindowController.shared.show() }
         } label: {
             Image(systemName: "slider.horizontal.3")
         }

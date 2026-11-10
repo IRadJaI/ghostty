@@ -71,6 +71,9 @@ extension Ghostty {
                 ghostty_config_load_default_files(cfg)
             }
 
+            // agent-sidebar: values chosen in the settings window.
+            AgentSettingsStore.loadOverrides(into: cfg)
+
             // We only load CLI args when not running in Xcode because in Xcode we
             // pass some special parameters to control the debugger.
             if !isRunningInXcode() {

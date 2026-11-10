@@ -424,6 +424,10 @@ enum AgentControlOperations {
             }
             return creationResult(created, controller)
 
+        case "open_settings":
+            AgentSettingsWindowController.shared.show()
+            return ["ok": true]
+
         case "snapshot_window":
             // Renders a window of this app to a PNG, for checking the UI
             // without screen recording permission.
