@@ -252,12 +252,18 @@ final class AgentSessionRestore {
             parts.append(plan.sessionCount == 1
                 ? "1 Claude Code session" : "\(plan.sessionCount) Claude Code sessions")
         }
-        var lines = saved.prefix(8).map { tab -> String in
+        // List exactly what "Restore" is going to do.
+        var entries = plan.open.map { tab -> String in
             let place = tab.cwd.map { AgentSidebarFormat.abbreviate(path: $0) } ?? tab.title
-            return "•  " + place + (tab.session != nil ? "  —  Claude Code" : "")
+            return place + (tab.session != nil ? "  —  Claude Code" : "")
         }
-        if saved.count > 8 {
-            lines.append("•  and \(saved.count - 8) more")
+        entries += plan.resume.map { entry in
+            let place = entry.tab.pwd.map { AgentSidebarFormat.abbreviate(path: $0) } ?? entry.tab.title
+            return place + "  —  Claude Code"
+        }
+        var lines = entries.prefix(8).map { "•  " + $0 }
+        if entries.count > 8 {
+            lines.append("•  and \(entries.count - 8) more")
         }
         alert.informativeText = "Ghostty can bring back " + parts.joined(separator: " and ")
             + " from the last time it was open.\n\n" + lines.joined(separator: "\n")
@@ -294,6 +300,7 @@ final class AgentSessionRestore {
             surface.surfaceModel?.sendText(command)
         }
 
+        var after = window
         for tab in plan.open {
             var config = Ghostty.SurfaceConfiguration()
             if let cwd = tab.cwd, FileManager.default.fileExists(atPath: cwd) {
@@ -302,7 +309,9 @@ final class AgentSessionRestore {
             if let session = tab.session, let command = Self.resumeCommand(session) {
                 config.initialInput = command
             }
-            _ = TerminalController.newTab(appDelegate.ghostty, from: window, withBaseConfig: config)
+            // Each tab goes after the previous one to keep the saved order.
+            let created = TerminalController.newTab(appDelegate.ghostty, from: after, withBaseConfig: config)
+            after = created?.window ?? after
         }
     }
 
