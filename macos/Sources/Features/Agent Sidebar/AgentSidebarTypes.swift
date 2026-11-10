@@ -9,17 +9,19 @@ import Foundation
 /// UserDefaults keys for the sidebar. The defaults are registered by
 /// `AgentSidebarModel` and must match the `@AppStorage` fallbacks in the views.
 enum AgentSidebarDefaults {
-    static let visible = "AgentSidebar.visible"
-    static let width = "AgentSidebar.width"
-    static let agentsOnly = "AgentSidebar.agentsOnly"
-    static let showRecent = "AgentSidebar.showRecentSessions"
-    static let showStatus = "AgentSidebar.showAgentStatus"
-    static let showCwd = "AgentSidebar.showWorkingDirectory"
-    static let showGitRepo = "AgentSidebar.showGitRepository"
-    static let showGitBranch = "AgentSidebar.showGitBranch"
-    static let showGitChanges = "AgentSidebar.showGitChanges"
-    static let hideNativeTabBar = "AgentSidebar.hideNativeTabBar"
-    static let agentPaneCommand = "AgentSidebar.agentPaneCommand"
+    // No dots in the keys: SwiftUI observes them through KVO, where a dot
+    // is a key path separator.
+    static let visible = "AgentSidebarVisible"
+    static let width = "AgentSidebarWidth"
+    static let agentsOnly = "AgentSidebarAgentsOnly"
+    static let showRecent = "AgentSidebarShowRecentSessions"
+    static let showStatus = "AgentSidebarShowAgentStatus"
+    static let showCwd = "AgentSidebarShowWorkingDirectory"
+    static let showGitRepo = "AgentSidebarShowGitRepository"
+    static let showGitBranch = "AgentSidebarShowGitBranch"
+    static let showGitChanges = "AgentSidebarShowGitChanges"
+    static let hideNativeTabBar = "AgentSidebarHideNativeTabBar"
+    static let agentPaneCommand = "AgentSidebarAgentPaneCommand"
 
     /// Runs the WTA helper (chat with the agent, error fixes) in a login
     /// shell so `wta-ghostty` and `npx` are found on the user's PATH.

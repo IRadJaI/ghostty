@@ -100,13 +100,6 @@ final class AgentSidebarModel: ObservableObject {
         sendAutofixAction(state.state == "review" ? "autofix_execute" : "autofix_execute_from_detected", tabID: tab.stableID)
     }
 
-    /// Height of the titlebar strip above the window's content view, or 0
-    /// when the content view already reaches under the titlebar. The sidebar
-    /// backdrop is drawn this much taller so it covers the strip.
-    private(set) var titlebarInset: CGFloat = 0 {
-        willSet { objectWillChange.send() }
-    }
-
     private struct WeakWindow {
         weak var window: NSWindow?
     }
@@ -393,34 +386,24 @@ final class AgentSidebarModel: ObservableObject {
     /// controller is public API. The accessory is found by the identifier
     /// Ghostty's window classes give it, with the private `NSTabBar` class
     /// name as a fallback. If it is not found nothing changes.
+    /// Re-applies the per-window AppKit state right after a layout change.
+    func syncWindowChrome() {
+        applyNativeTabBarVisibility()
+    }
+
     private func applyNativeTabBarVisibility() {
         let defaults = UserDefaults.standard
-        let hide = defaults.bool(forKey: AgentSidebarDefaults.visible)
-            && defaults.bool(forKey: AgentSidebarDefaults.hideNativeTabBar)
+        // The collapsed rail lists the tabs too.
+        let hide = defaults.bool(forKey: AgentSidebarDefaults.hideNativeTabBar)
 
         let sidebarVisible = defaults.bool(forKey: AgentSidebarDefaults.visible)
 
         for entry in windows.values {
             guard let window = entry.window, window.styleMask.contains(.titled) else { continue }
 
-            // Let the content view reach under the titlebar so the sidebar
-            // backdrop can run the full height of the window, like Finder.
-            // The terminal itself stays below the titlebar (safe area).
-            if sidebarVisible {
-                if !window.styleMask.contains(.fullSizeContentView) {
-                    window.styleMask.insert(.fullSizeContentView)
-                }
-                // An opaque titlebar would paint over the backdrop.
-                if !window.titlebarAppearsTransparent {
-                    window.titlebarAppearsTransparent = true
-                }
-                if let contentView = window.contentView, window === NSApp.keyWindow || titlebarInset == 0 {
-                    let inset = max(0, (window.frame.height - contentView.frame.height).rounded())
-                    if inset != titlebarInset, inset < 100 {
-                        titlebarInset = inset
-                    }
-                }
-            }
+            AgentSidebarTitlebarBackdrop.sync(
+                window: window,
+                width: sidebarVisible ? Self.occupiedWidth : nil)
             for accessory in window.titlebarAccessoryViewControllers {
                 // Ghostty tags the tab bar accessory itself; only the main
                 // window's accessory actually contains the NSTabBar view.
@@ -441,13 +424,16 @@ final class AgentSidebarModel: ObservableObject {
     static var occupiedWidth: CGFloat {
         _ = shared // registers the defaults
         let defaults = UserDefaults.standard
-        guard defaults.bool(forKey: AgentSidebarDefaults.visible) else {
-            return collapsedWidth + 1
-        }
-        return clampedWidth(defaults.double(forKey: AgentSidebarDefaults.width)) + 1
+        return occupiedWidth(
+            visible: defaults.bool(forKey: AgentSidebarDefaults.visible),
+            width: defaults.double(forKey: AgentSidebarDefaults.width))
     }
 
-    static let collapsedWidth: CGFloat = 28
+    static func occupiedWidth(visible: Bool, width: Double) -> CGFloat {
+        (visible ? clampedWidth(width) : collapsedWidth) + 1
+    }
+
+    static let collapsedWidth: CGFloat = 46
 
     static func clampedWidth(_ width: Double) -> CGFloat {
         CGFloat(min(max(width, 180), 480))

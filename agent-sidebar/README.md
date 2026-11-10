@@ -83,7 +83,7 @@ mkdir -p ~/bin && ln -sf "$PWD/tools/wta/macos/wta-ghostty" ~/bin/wta-ghostty
 Если панель открылась с сообщением об ошибке, оно говорит, чего не хватает
 (не найден `wta-ghostty`, не собран `wta` и т. п.).
 
-Команда запуска панели хранится в настройке `AgentSidebar.agentPaneCommand`
+Команда запуска панели хранится в настройке `AgentSidebarAgentPaneCommand`
 (по умолчанию `/bin/zsh -lc 'exec wta-ghostty helper'`).
 
 ### Управляющий сокет

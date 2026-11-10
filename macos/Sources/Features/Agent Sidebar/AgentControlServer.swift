@@ -424,6 +424,25 @@ enum AgentControlOperations {
             }
             return creationResult(created, controller)
 
+        case "snapshot_window":
+            // Renders a window of this app to a PNG, for checking the UI
+            // without screen recording permission.
+            let visible = NSApp.windows.filter { $0.isVisible }
+            let title = stringParam(params, "title")
+            let match = title.flatMap { title in visible.first { $0.title.contains(title) } }
+            guard let window = match ?? (title == nil ? (NSApp.keyWindow ?? NSApp.mainWindow ?? visible.first) : nil),
+                  let view = window.contentView?.superview ?? window.contentView,
+                  let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)
+            else { throw AgentControlError("no window to snapshot") }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let data = bitmap.representation(using: .png, properties: [:]) else {
+                throw AgentControlError("failed to encode the snapshot")
+            }
+            let path = stringParam(params, "path")
+                ?? (NSTemporaryDirectory() as NSString).appendingPathComponent("ghostty-agent-snapshot.png")
+            try data.write(to: URL(fileURLWithPath: path))
+            return ["ok": true, "path": path, "title": window.title]
+
         case "new_tab":
             guard let appDelegate = NSApp.delegate as? AppDelegate else {
                 throw AgentControlError("app delegate unavailable")

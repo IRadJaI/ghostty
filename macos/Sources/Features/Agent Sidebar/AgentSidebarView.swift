@@ -21,79 +21,32 @@ struct AgentSidebarContainer<Content: View>: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if visible {
-                AgentSidebarView(windowProvider: windowProvider)
-                    .frame(width: AgentSidebarModel.clampedWidth(width))
-                AgentSidebarResizeHandle(width: $width)
-            } else {
-                AgentSidebarRail()
-                Divider()
-            }
+            // The divider and the resize handle sit on the sidebar's own
+            // backdrop; a separate divider would show the bare window.
+            AgentSidebarView(windowProvider: windowProvider, compact: !visible)
+                .frame(width: AgentSidebarModel.occupiedWidth(visible: visible, width: width))
+                .overlay(alignment: .trailing) {
+                    if visible {
+                        AgentSidebarResizeHandle(width: $width)
+                            .frame(width: AgentSidebarResizeHandle.hitWidth)
+                    } else {
+                        Rectangle()
+                            .fill(Color(nsColor: .separatorColor))
+                            .frame(width: 1)
+                    }
+                }
             content
         }
-    }
-}
-
-/// The divider between the sidebar and the terminal; drag it to resize.
-private struct AgentSidebarResizeHandle: View {
-    @Binding var width: Double
-    @State private var widthAtDragStart: Double?
-
-    var body: some View {
-        Divider()
-            .overlay {
-                Color.clear
-                    .frame(width: 9)
-                    .contentShape(Rectangle())
-                    .onHover { inside in
-                        if inside {
-                            NSCursor.resizeLeftRight.push()
-                        } else {
-                            NSCursor.pop()
-                        }
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                            .onChanged { value in
-                                let start = widthAtDragStart ?? width
-                                widthAtDragStart = start
-                                width = Double(AgentSidebarModel.clampedWidth(start + Double(value.translation.width)))
-                            }
-                            .onEnded { _ in
-                                widthAtDragStart = nil
-                            }
-                    )
-                    .help("Drag to resize the sidebar")
-            }
-    }
-}
-
-/// The thin strip shown while the sidebar is collapsed.
-private struct AgentSidebarRail: View {
-    @AppStorage(AgentSidebarDefaults.visible) private var visible = true
-
-    var body: some View {
-        VStack {
-            Button {
-                visible = true
-            } label: {
-                Image(systemName: "sidebar.left")
-            }
-            .buttonStyle(.plain)
-            .help("Show tab sidebar")
-            .accessibilityLabel("Show tab sidebar")
-            .padding(.top, 10)
-            Spacer()
-        }
-        .frame(width: AgentSidebarModel.collapsedWidth)
-        .frame(maxHeight: .infinity)
-        .background { AgentSidebarBackground().ignoresSafeArea(.container, edges: .top) }
+        .onChange(of: visible) { _ in AgentSidebarModel.shared.syncWindowChrome() }
+        .onChange(of: width) { _ in AgentSidebarModel.shared.syncWindowChrome() }
     }
 }
 
 /// The sidebar itself.
 struct AgentSidebarView: View {
     let windowProvider: () -> NSWindow?
+    /// Collapsed to a rail of tab icons.
+    var compact = false
 
     @ObservedObject private var model = AgentSidebarModel.shared
 
@@ -113,6 +66,31 @@ struct AgentSidebarView: View {
     @State private var windowID: ObjectIdentifier?
 
     var body: some View {
+        Group {
+            if compact {
+                railContent
+            } else {
+                fullContent
+            }
+        }
+        .background { AgentSidebarBackground() }
+        .onAppear {
+            resolveWindow()
+            model.start()
+        }
+        .onReceive(model.objectWillChange) { _ in
+            if windowID == nil {
+                resolveWindow()
+            }
+        }
+        .onChange(of: hideNativeTabBar) { _ in model.refresh() }
+        .onChange(of: showRecent) { _ in model.refresh() }
+        .onChange(of: showGitRepo) { _ in model.refresh() }
+        .onChange(of: showGitBranch) { _ in model.refresh() }
+        .onChange(of: showGitChanges) { _ in model.refresh() }
+    }
+
+    private var fullContent: some View {
         VStack(spacing: 0) {
             header
             if searching {
@@ -128,18 +106,7 @@ struct AgentSidebarView: View {
                             select: { model.select(tab) },
                             close: { model.close(tab) }
                         )
-                        .contextMenu {
-                            Button("Rename Tab…") { model.rename(tab) }
-                            if let pwd = tab.pwd, !pwd.isEmpty {
-                                Button("Copy Working Directory") {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(pwd, forType: .string)
-                                }
-                            }
-                            Divider()
-                            Button("Close Tab") { model.close(tab) }
-                            Button("Close Other Tabs") { model.closeOthers(tab) }
-                        }
+                        .contextMenu { tabMenu(tab) }
                     }
                     if visibleTabs.isEmpty {
                         Text(agentsOnly ? "No agent tabs" : "No tabs")
@@ -162,25 +129,53 @@ struct AgentSidebarView: View {
                 }
             }
         }
-        .background {
-            AgentSidebarBackground()
-                .padding(.top, -model.titlebarInset)
-                .ignoresSafeArea(.container, edges: .top)
+    }
+
+    /// The collapsed sidebar: one icon per tab.
+    private var railContent: some View {
+        VStack(spacing: 6) {
+            railButton("sidebar.left", "Show tab sidebar") { visible = true }
+            Divider()
+                .padding(.horizontal, 8)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 4) {
+                    ForEach(Array(visibleTabs.enumerated()), id: \.element.id) { index, tab in
+                        AgentSidebarRailItem(tab: tab, number: index + 1) { model.select(tab) }
+                            .contextMenu { tabMenu(tab) }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            railButton("plus", "New tab") { model.newTab(from: windowProvider()) }
+            railButton("sparkles", "Open agent pane") { model.openAgentPane(from: windowProvider()) }
         }
-        .onAppear {
-            resolveWindow()
-            model.start()
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func railButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .frame(width: 30, height: 24)
+                .contentShape(Rectangle())
         }
-        .onReceive(model.objectWillChange) { _ in
-            if windowID == nil {
-                resolveWindow()
+        .buttonStyle(.plain)
+        .agentTooltip(label)
+        .accessibilityLabel(label)
+    }
+
+    @ViewBuilder
+    private func tabMenu(_ tab: AgentSidebarModel.Tab) -> some View {
+        Button("Rename Tab…") { model.rename(tab) }
+        if let pwd = tab.pwd, !pwd.isEmpty {
+            Button("Copy Working Directory") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(pwd, forType: .string)
             }
         }
-        .onChange(of: hideNativeTabBar) { _ in model.refresh() }
-        .onChange(of: showRecent) { _ in model.refresh() }
-        .onChange(of: showGitRepo) { _ in model.refresh() }
-        .onChange(of: showGitBranch) { _ in model.refresh() }
-        .onChange(of: showGitChanges) { _ in model.refresh() }
+        Divider()
+        Button("Close Tab") { model.close(tab) }
+        Button("Close Other Tabs") { model.closeOthers(tab) }
     }
 
     // MARK: Data
@@ -244,7 +239,7 @@ struct AgentSidebarView: View {
                 Image(systemName: "sidebar.left")
             }
             .buttonStyle(.plain)
-            .help("Hide tab sidebar")
+            .agentTooltip("Hide tab sidebar")
             .accessibilityLabel("Hide tab sidebar")
 
             Text("Tabs")
@@ -258,7 +253,7 @@ struct AgentSidebarView: View {
                 Image(systemName: "sparkles")
             }
             .buttonStyle(.plain)
-            .help("Open agent pane")
+            .agentTooltip("Open agent pane")
             .accessibilityLabel("Open agent pane")
 
             Button {
@@ -267,7 +262,7 @@ struct AgentSidebarView: View {
                 Image(systemName: "plus")
             }
             .buttonStyle(.plain)
-            .help("New tab")
+            .agentTooltip("New tab")
             .accessibilityLabel("New tab")
 
             Button {
@@ -279,7 +274,7 @@ struct AgentSidebarView: View {
                 Image(systemName: "magnifyingglass")
             }
             .buttonStyle(.plain)
-            .help("Search tabs")
+            .agentTooltip("Search tabs")
             .accessibilityLabel("Search tabs")
 
             optionsMenu
@@ -310,7 +305,7 @@ struct AgentSidebarView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Sidebar options")
+        .agentTooltip("Sidebar options")
         .accessibilityLabel("Sidebar options")
     }
 
@@ -415,7 +410,7 @@ private struct AgentSidebarAutofixBar: View {
                     Image(systemName: "xmark")
                 }
                 .buttonStyle(.plain)
-                .help("Dismiss")
+                .agentTooltip("Dismiss")
                 .accessibilityLabel("Dismiss fix")
             default:
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -436,6 +431,55 @@ private struct AgentSidebarAutofixBar: View {
 }
 
 // MARK: - Tab row
+
+/// A tab in the collapsed sidebar.
+private struct AgentSidebarRailItem: View {
+    let tab: AgentSidebarModel.Tab
+    let number: Int
+    let select: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            AgentSidebarIcon(agent: tab.agent, state: tab.state)
+            Text("\(number)")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 34, height: 38)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(tab.isSelected ? 0.16 : (hovering ? 0.07 : 0)))
+        )
+        .overlay(alignment: .topTrailing) {
+            if tab.needsAttention {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 7, height: 7)
+                    .padding(3)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: select)
+        .onHover { hovering = $0 }
+        .agentTooltip(tooltip)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(tooltip)
+        .accessibilityAddTraits(tab.isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var tooltip: String {
+        var parts = [tab.title.isEmpty ? "Terminal" : tab.title]
+        if let state = tab.state {
+            parts.append(state.label)
+        }
+        if let pwd = tab.pwd, !pwd.isEmpty {
+            parts.append(AgentSidebarFormat.abbreviate(path: pwd))
+        }
+        return parts.joined(separator: " — ")
+    }
+}
 
 private struct AgentSidebarRow: View {
     struct Options: Equatable {
@@ -494,7 +538,7 @@ private struct AgentSidebarRow: View {
                         .font(.caption.weight(.semibold))
                 }
                 .buttonStyle(.plain)
-                .help("Close tab")
+                .agentTooltip("Close tab")
                 .accessibilityLabel("Close tab")
             } else if tab.needsAttention {
                 Circle()
@@ -601,7 +645,7 @@ private struct AgentSidebarSessionRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
-        .help("Resume this session in a new tab")
+        .agentTooltip("Resume this session in a new tab")
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
     }
