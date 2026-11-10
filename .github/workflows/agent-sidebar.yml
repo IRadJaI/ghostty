@@ -74,8 +74,15 @@ jobs:
       - name: Build wtcli-ghostty
         continue-on-error: true
         run: |
-          git clone --quiet --depth 1 -b macos-port https://github.com/IRadJaI/AgentTerm "$RUNNER_TEMP/AgentTerm"
-          RUSTUP_TOOLCHAIN=stable cargo build --quiet --manifest-path "$RUNNER_TEMP/AgentTerm/tools/wta/macos/wtcli-ghostty/Cargo.toml"
+          mkdir -p "$RUNNER_TEMP/shots"
+          {
+            export PATH="$HOME/.cargo/bin:$PATH"
+            git clone --quiet --depth 1 -b macos-port https://github.com/IRadJaI/AgentTerm "$RUNNER_TEMP/AgentTerm"
+            cargo --version
+            cargo build --manifest-path "$RUNNER_TEMP/AgentTerm/tools/wta/macos/wtcli-ghostty/Cargo.toml"
+            ls -la "$RUNNER_TEMP/AgentTerm/tools/wta/macos/wtcli-ghostty/target/debug/wtcli"
+          } > "$RUNNER_TEMP/shots/wtcli-build.txt" 2>&1 || true
+          tail -5 "$RUNNER_TEMP/shots/wtcli-build.txt"
 
       # Ad-hoc signature so the downloaded app can start on Apple Silicon.
       - name: Ad-hoc sign
