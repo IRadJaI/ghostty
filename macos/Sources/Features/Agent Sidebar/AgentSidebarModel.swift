@@ -529,13 +529,17 @@ final class AgentSidebarModel: ObservableObject {
         applyNativeTabBarVisibility()
     }
 
+    /// Lowercased name of the process in front in the tab's focused terminal.
+    func frontProcessName(_ tab: Tab) -> String? {
+        guard let controller = window(for: tab)?.windowController as? TerminalController,
+              let pid = controller.focusedSurface?.surfaceModel?.foregroundPID
+        else { return nil }
+        return Self.processName(pid: pid)?.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
     /// True when the tab's focused terminal sits at a shell prompt.
     func hasShellInFront(_ tab: Tab) -> Bool {
-        guard let controller = window(for: tab)?.windowController as? TerminalController,
-              let pid = controller.focusedSurface?.surfaceModel?.foregroundPID,
-              let name = Self.processName(pid: pid)
-        else { return false }
-        return AgentHookStore.shellNames.contains(name.lowercased())
+        frontProcessName(tab).map { AgentHookStore.shellNames.contains($0) } ?? false
     }
 
     /// Hides AppKit's own tab bar while the sidebar is showing the tabs.

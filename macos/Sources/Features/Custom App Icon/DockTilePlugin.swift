@@ -12,8 +12,11 @@ class DockTilePlugin: NSObject, NSDockTilePlugIn {
     #if DEBUG
     private let ghosttyUserDefaults = UserDefaults(suiteName: "com.mitchellh.ghostty.debug")
     #else
-    // agent-sidebar: the fork's release build has its own bundle id.
-    private let ghosttyUserDefaults = UserDefaults(suiteName: "com.iradjai.ghostty-agents")
+    // agent-sidebar: the app this plugin is embedded in; the fork has its own bundle id.
+    private let ghosttyUserDefaults = UserDefaults(suiteName: Bundle(
+        url: Bundle(for: DockTilePlugin.self).bundleURL
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    )?.bundleIdentifier ?? "com.mitchellh.ghostty")
     #endif
 
     private var iconChangeObserver: Any?

@@ -128,7 +128,7 @@ final class AgentSidebarPeek: ObservableObject {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.opening = nil
-            if self.pointerIsOverSidebar(width: AgentSidebarModel.collapsedWidth + 1) {
+            if self.pointerIsOverSidebar(width: AgentSidebarModel.collapsedWidth + 1, opening: true) {
                 self.setOpen(true)
             }
         }
@@ -148,15 +148,14 @@ final class AgentSidebarPeek: ObservableObject {
         watcher?.invalidate()
         watcher = nil
         guard value else { return }
-        // Hover events do not survive a switch to another tab's window, so
-        // the pointer is polled while the rail is open.
+        // Polled: hover events do not survive a switch to another tab's window.
         var outside = 0
         let timer = Timer(timeInterval: 0.15, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.open else { return }
                 let width = AgentSidebarModel.clampedWidth(
                     UserDefaults.standard.double(forKey: AgentSidebarDefaults.width))
-                outside = self.pointerIsOverSidebar(width: width) ? 0 : outside + 1
+                outside = self.pointerIsOverSidebar(width: width, opening: false) ? 0 : outside + 1
                 if outside >= 2 {
                     self.setOpen(false)
                 }
@@ -166,13 +165,13 @@ final class AgentSidebarPeek: ObservableObject {
         watcher = timer
     }
 
-    private func pointerIsOverSidebar(width: CGFloat) -> Bool {
+    private func pointerIsOverSidebar(width: CGFloat, opening: Bool) -> Bool {
         guard NSApp.isActive,
               let window = NSApp.keyWindow, window.windowController is TerminalController,
               let content = window.contentView
         else { return false }
-        // An open menu or a sheet keeps the rail as it is.
-        if window.attachedSheet != nil || RunLoop.main.currentMode == .eventTracking { return true }
+        // An open menu or a sheet keeps an open rail open.
+        if !opening, window.attachedSheet != nil || RunLoop.main.currentMode == .eventTracking { return true }
         let area = window.convertToScreen(content.convert(content.bounds, to: nil))
         let pointer = NSEvent.mouseLocation
         return pointer.x >= area.minX && pointer.x <= area.minX + width

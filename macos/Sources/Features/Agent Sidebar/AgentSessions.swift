@@ -6,7 +6,7 @@ import UserNotifications
 // MARK: - Environment
 
 enum AgentEnvironment {
-    /// Markers a Claude Code session leaves for its children. A terminal started from such a session must not hand them to its tabs: Claude Code there would stop saving its history.
+    /// Markers of a Claude Code session; inherited, they make Claude Code in the tabs run as its child.
     private static let sessionMarkers = [
         "CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT",
         "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH",
@@ -65,6 +65,8 @@ final class AgentNotifier {
         let defaults = UserDefaults.standard
         var states: [String: AgentState] = [:]
         var waiting = 0
+        // The app's own badge already counts tabs whose bell rang.
+        let bellCounts = (NSApp.delegate as? AppDelegate)?.ghostty.config.bellFeatures.contains(.attention) ?? false
 
         for tab in tabs {
             guard !tab.stableID.isEmpty, let state = tab.state else { continue }
@@ -85,7 +87,7 @@ final class AgentNotifier {
             if state != .done {
                 unread.remove(id)
             }
-            if state == .waiting {
+            if state == .waiting, !(bellCounts && tab.hasBell) {
                 waiting += 1
             }
             guard changed, !front else { continue }
@@ -106,7 +108,8 @@ final class AgentNotifier {
         lastStates = states
         primed = true
 
-        let count = defaults.bool(forKey: AgentSidebarDefaults.dockBadge) ? waiting + unread.count : 0
+        let unseen = tabs.filter { unread.contains($0.stableID) && !(bellCounts && $0.hasBell) }.count
+        let count = defaults.bool(forKey: AgentSidebarDefaults.dockBadge) ? waiting + unseen : 0
         if count != AgentBadge.count {
             AgentBadge.count = count
             (NSApp.delegate as? AppDelegate)?.setDockBadge()
@@ -147,7 +150,9 @@ final class AgentNotifier {
     // MARK: Permission
 
     /// What macOS allows this app to show, in words, and whether it is enough.
-    nonisolated static func permission(_ completion: @escaping (_ text: String, _ allowed: Bool) -> Void) {
+    nonisolated static func permission(
+        _ completion: @escaping (_ text: String, _ allowed: Bool, _ asked: Bool) -> Void
+    ) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             let text: String
             var allowed = false
@@ -158,7 +163,8 @@ final class AgentNotifier {
                 allowed = settings.alertSetting == .enabled
                 text = allowed ? "Allowed" : "Allowed, but banners are off in System Settings"
             }
-            DispatchQueue.main.async { completion(text, allowed) }
+            let asked = settings.authorizationStatus != .notDetermined
+            DispatchQueue.main.async { completion(text, allowed, asked) }
         }
     }
 
@@ -185,6 +191,7 @@ final class AgentNotifier {
 
     private static let testKey = "agentSidebarTest"
     nonisolated(unsafe) static var lastTestResult = "not run"
+    nonisolated(unsafe) static var lastSettings = "unknown"
 
     private static func identifier(_ tabID: String) -> String {
         "agent-sidebar-\(tabID)"
@@ -201,8 +208,7 @@ final class AgentNotifier {
         let info = response.notification.request.content.userInfo
         if info[AgentUpstreamCheck.notificationKey] != nil {
             Task { @MainActor in
-                UserDefaults.standard.set("Advanced", forKey: "AgentSettingsPane")
-                AgentSettingsWindowController.shared.show()
+                AgentSettingsWindowController.shared.show(pane: "Advanced")
             }
             return true
         }
@@ -372,11 +378,12 @@ final class AgentSessionRestore {
         }
         // List exactly what "Restore" is going to do.
         var entries = plan.open.map { tab -> String in
-            let place = (tab.sessionCwd ?? tab.cwd).map { AgentSidebarFormat.abbreviate(path: $0) } ?? tab.title
+            let place = (Self.sessionDirectory(tab) ?? tab.cwd)
+                .map { AgentSidebarFormat.abbreviate(path: $0) } ?? tab.title
             return place + (tab.session != nil ? "  —  Claude Code" : "")
         }
         entries += plan.resume.map { entry in
-            let place = (entry.saved.sessionCwd ?? entry.tab.pwd)
+            let place = (Self.sessionDirectory(entry.saved) ?? entry.tab.pwd)
                 .map { AgentSidebarFormat.abbreviate(path: $0) } ?? entry.tab.title
             return place + "  —  Claude Code"
         }
@@ -416,8 +423,10 @@ final class AgentSessionRestore {
             guard let resume = Self.resumeCommand(saved) else { continue }
             var command = resume
             if let cwd = Self.sessionDirectory(saved), cwd != tab.pwd {
-                // A directory that cannot be typed safely gets a tab of its own.
-                guard let quoted = Self.shellQuoted(cwd) else {
+                // Typed only where it is safe and the shell takes this syntax.
+                guard Self.posixShells.contains(model.frontProcessName(tab) ?? ""),
+                      let quoted = Self.shellQuoted(cwd)
+                else {
                     open.append(saved)
                     continue
                 }
@@ -456,15 +465,70 @@ final class AgentSessionRestore {
         return "claude --resume \(session)"
     }
 
-    /// Where the session worked, when that directory still exists.
+    private static let posixShells: Set<String> = ["zsh", "bash", "sh", "dash", "ksh", "fish"]
+
+    /// Where to resume the session: its project as Claude Code files it, else where it last worked.
     private static func sessionDirectory(_ tab: SavedTab) -> String? {
-        guard tab.session != nil, let cwd = tab.sessionCwd, cwd.hasPrefix("/"),
-              FileManager.default.fileExists(atPath: cwd)
-        else { return nil }
+        guard let session = tab.session else { return nil }
+        if let project = projectDirectory(session: session) {
+            return project
+        }
+        guard let cwd = tab.sessionCwd, cwd.hasPrefix("/"), FileManager.default.fileExists(atPath: cwd) else {
+            return nil
+        }
         return cwd
     }
 
-    /// Single-quoted for any shell, or nil when the path has a character that shells treat differently inside quotes.
+    /// The directory whose name Claude Code used for the folder that holds the session's transcript.
+    static func projectDirectory(session: String) -> String? {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        guard !session.isEmpty, session.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+
+        let manager = FileManager.default
+        let projects = manager.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
+        var newest: (url: URL, modified: Date)?
+        for folder in (try? manager.contentsOfDirectory(atPath: projects.path)) ?? [] {
+            let url = projects.appendingPathComponent(folder).appendingPathComponent("\(session).jsonl")
+            guard let modified = (try? manager.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date else {
+                continue
+            }
+            if newest == nil || modified > newest!.modified {
+                newest = (url, modified)
+            }
+        }
+        guard let transcript = newest?.url, let handle = try? FileHandle(forReadingFrom: transcript) else {
+            return nil
+        }
+        defer { try? handle.close() }
+
+        // The session may have moved between directories; its start and its end name them.
+        let chunk = 256 * 1024
+        var data = (try? handle.read(upToCount: chunk)) ?? Data()
+        if let size = try? handle.seekToEnd(), size > UInt64(chunk),
+           (try? handle.seek(toOffset: size - UInt64(chunk))) != nil {
+            data.append(UInt8(ascii: "\n"))
+            data.append((try? handle.read(upToCount: chunk)) ?? Data())
+        }
+
+        let folder = transcript.deletingLastPathComponent().lastPathComponent
+        var seen = Set<String>()
+        for line in data.split(separator: UInt8(ascii: "\n")) where line.range(of: Data("\"cwd\"".utf8)) != nil {
+            guard let entry = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                  let cwd = entry["cwd"] as? String, seen.insert(cwd).inserted
+            else { continue }
+            // Claude Code names the folder after the path with every other character as a dash.
+            let encoded = String(cwd.unicodeScalars.map { scalar -> Character in
+                scalar.isASCII && CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : "-"
+            })
+            var isDirectory: ObjCBool = false
+            if encoded == folder, manager.fileExists(atPath: cwd, isDirectory: &isDirectory), isDirectory.boolValue {
+                return cwd
+            }
+        }
+        return nil
+    }
+
+    /// Single-quoted, or nil when the path has a quote, a backslash or a control character.
     private static func shellQuoted(_ path: String) -> String? {
         let unsafe = CharacterSet.controlCharacters
             .union(.newlines)

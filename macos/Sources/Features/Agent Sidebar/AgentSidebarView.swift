@@ -45,8 +45,7 @@ struct AgentSidebarContainer<Content: View>: View {
                             .frame(width: AgentSidebarResizeHandle.hitWidth)
                     }
             } else {
-                // The rail is drawn as an overlay below, so that widening it
-                // on hover covers the terminal instead of resizing it.
+                // Space for the rail, which is an overlay so it can widen over the terminal.
                 Color.clear
                     .frame(width: AgentSidebarModel.occupiedWidth(visible: false, width: width))
             }
@@ -57,8 +56,7 @@ struct AgentSidebarContainer<Content: View>: View {
         }
         .overlay(alignment: .leading) {
             if !visible {
-                // One view in both widths: the icons stay where they are and
-                // the titles appear next to them.
+                // One view in both widths, so the icons do not move.
                 AgentSidebarView(windowProvider: windowProvider, compact: true, peeking: peeking)
                     .frame(width: peeking
                         ? AgentSidebarModel.clampedWidth(width)
@@ -599,9 +597,7 @@ struct AgentSidebarMonogram {
     }
 
     init(_ source: String) {
-        let words = source
-            .split { !$0.isLetter && !$0.isNumber }
-            .filter { !$0.isEmpty }
+        let words = source.split { !$0.isLetter && !$0.isNumber }
         let letters: String
         if words.count >= 2 {
             letters = String(words[0].prefix(1)) + String(words[1].prefix(1))
@@ -610,9 +606,9 @@ struct AgentSidebarMonogram {
         }
         self.letters = letters.uppercased()
 
-        // djb2: the same text gives the same color on every launch.
+        // djb2 over the words: stable across launches and status glyphs.
         var hash: UInt64 = 5381
-        for byte in source.utf8 {
+        for byte in words.joined(separator: " ").lowercased().utf8 {
             hash = (hash &* 33) &+ UInt64(byte)
         }
         color = Color(hue: Double(hash % 360) / 360, saturation: 0.55, brightness: 0.68)

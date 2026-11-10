@@ -434,25 +434,24 @@ enum AgentControlOperations {
             return ["ok": true]
 
         case "notification_status":
-            let semaphore = DispatchSemaphore(value: 0)
-            var status = ""
+            // Answers with what the previous call found out.
             UNUserNotificationCenter.current().getNotificationSettings { settings in
-                status = "authorization=\(settings.authorizationStatus.rawValue) alert=\(settings.alertSetting.rawValue) "
+                let text = "authorization=\(settings.authorizationStatus.rawValue) alert=\(settings.alertSetting.rawValue) "
                     + "sound=\(settings.soundSetting.rawValue) style=\(settings.alertStyle.rawValue)"
-                semaphore.signal()
+                DispatchQueue.main.async { AgentNotifier.lastSettings = text }
             }
-            _ = semaphore.wait(timeout: .now() + 3)
-            return ["ok": true, "settings": status, "last_test": AgentNotifier.lastTestResult]
+            return ["ok": true, "settings": AgentNotifier.lastSettings, "last_test": AgentNotifier.lastTestResult]
+
+        case "session_directory":
+            guard let session = stringParam(params, "session") else { throw AgentControlError("missing session") }
+            return ["ok": true, "directory": AgentSessionRestore.projectDirectory(session: session) ?? ""]
 
         case "fix_last_error":
             AgentSidebarModel.shared.fixLastError()
             return ["ok": true]
 
         case "open_settings":
-            if let pane = stringParam(params, "pane") {
-                UserDefaults.standard.set(pane, forKey: "AgentSettingsPane")
-            }
-            AgentSettingsWindowController.shared.show()
+            AgentSettingsWindowController.shared.show(pane: stringParam(params, "pane"))
             return ["ok": true]
 
         case "snapshot_window":

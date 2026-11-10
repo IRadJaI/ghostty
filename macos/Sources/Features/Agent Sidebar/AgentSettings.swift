@@ -180,7 +180,12 @@ final class AgentSettingsWindowController: NSWindowController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func show() {
+    static let paneKey = "AgentSettingsPane"
+
+    func show(pane: String? = nil) {
+        if let pane {
+            UserDefaults.standard.set(pane, forKey: Self.paneKey)
+        }
         AgentSettingsStore.shared.reload()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
@@ -222,7 +227,7 @@ private enum AgentSettingsPane: String, CaseIterable, Identifiable {
 
 struct AgentSettingsView: View {
     @ObservedObject private var store = AgentSettingsStore.shared
-    @AppStorage("AgentSettingsPane") private var paneName = AgentSettingsPane.appearance.rawValue
+    @AppStorage(AgentSettingsWindowController.paneKey) private var paneName = AgentSettingsPane.appearance.rawValue
 
     private var pane: AgentSettingsPane? { AgentSettingsPane(rawValue: paneName) }
 
@@ -282,25 +287,14 @@ extension AgentSettingsStore {
             set: { self.set(key, String(format: format, $0)) })
     }
 
-    /// A color stored as `#rrggbb`.
+    /// A color stored as `#RRGGBB`.
     func color(_ key: String, default fallback: Color) -> Binding<Color> {
         Binding(
-            get: {
-                guard let hex = self.value(key)?.trimmingCharacters(in: CharacterSet(charactersIn: "#")),
-                      hex.count == 6, let value = UInt32(hex, radix: 16)
-                else { return fallback }
-                return Color(
-                    red: Double((value >> 16) & 0xff) / 255,
-                    green: Double((value >> 8) & 0xff) / 255,
-                    blue: Double(value & 0xff) / 255)
-            },
+            get: { self.value(key).flatMap { NSColor(hex: $0) }.map { Color(nsColor: $0) } ?? fallback },
             set: { color in
-                guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return }
-                self.set(key, String(
-                    format: "#%02x%02x%02x",
-                    Int((rgb.redComponent * 255).rounded()),
-                    Int((rgb.greenComponent * 255).rounded()),
-                    Int((rgb.blueComponent * 255).rounded())))
+                if let hex = NSColor(color).hexString {
+                    self.set(key, hex)
+                }
             })
     }
 
@@ -694,12 +688,14 @@ private struct AgentSettingsAgents: View {
 
     @State private var permission = "…"
     @State private var permissionAllowed = true
+    @State private var permissionDenied = false
     @State private var testResult: String?
 
     private func refreshPermission() {
-        AgentNotifier.permission { text, allowed in
+        AgentNotifier.permission { text, allowed, asked in
             permission = text
             permissionAllowed = allowed
+            permissionDenied = asked && !allowed
         }
     }
 
@@ -752,7 +748,7 @@ private struct AgentSettingsAgents: View {
                 HStack(spacing: 8) {
                     Text(permission)
                         .foregroundStyle(permissionAllowed ? Color.secondary : Color.orange)
-                    if !permissionAllowed, permission != "Not asked yet" {
+                    if permissionDenied {
                         Button("Open System Settings") {
                             if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
                                 NSWorkspace.shared.open(url)
