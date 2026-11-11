@@ -640,8 +640,7 @@ private struct AgentSidebarRailItem: View {
         HStack(spacing: 8) {
             VStack(spacing: 0) {
                 AgentSidebarIcon(
-                    agent: tab.agent, state: tab.state, badge: badge,
-                    badgeHollow: !tab.needsAttention && !tab.unread)
+                    agent: tab.agent, state: tab.state, badge: badge)
                 Text(monogram.letters)
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
@@ -698,10 +697,10 @@ private struct AgentSidebarRailItem: View {
         AgentSidebarMonogram(tab: tab)
     }
 
-    /// Orange: waits for the user or rang the bell. Green: finished, a ring once seen.
+    /// Orange: waits for the user or rang the bell. Green: finished and not seen yet.
     private var badge: Color? {
         if tab.needsAttention { return .orange }
-        return tab.unread || tab.state == .done ? AgentSidebarStyle.color(for: .done) : nil
+        return tab.unread ? AgentSidebarStyle.color(for: .done) : nil
     }
 
     private var tooltip: String {
@@ -901,8 +900,6 @@ private struct AgentSidebarIcon: View {
     let state: AgentState?
     /// A dot on the icon, where there is no room for one next to the title.
     var badge: Color?
-    /// A ring instead of a dot: the state has been seen.
-    var badgeHollow = false
 
     var body: some View {
         // Top corner: the monogram chip sits right under the icon.
@@ -925,15 +922,9 @@ private struct AgentSidebarIcon: View {
             .frame(width: 20, height: 20)
 
             if let badge {
-                Group {
-                    if badgeHollow {
-                        Circle().strokeBorder(badge, lineWidth: 2)
-                    } else {
-                        Circle().fill(badge)
-                    }
-                }
-                .frame(width: 8, height: 8)
-                .offset(x: 4, y: -2)
+                Circle().fill(badge)
+                    .frame(width: 8, height: 8)
+                    .offset(x: 4, y: -2)
             }
         }
         .accessibilityHidden(true)
