@@ -204,7 +204,10 @@ struct AgentHookStatus: Equatable {
     /// What a finished turn left behind, from the Stop hook's `background_tasks` and `session_crons`.
     /// Work is something that will finish; a monitor or a scheduled wake-up only watches.
     private static func pendingWork(_ payload: [String: Any]?) -> (work: String?, watching: String?) {
-        let tasks = payload?["background_tasks"] as? [[String: Any]] ?? []
+        // Artifact subscriptions are re-armed on every resume and mean nothing to the user.
+        let tasks = (payload?["background_tasks"] as? [[String: Any]] ?? []).filter {
+            !(($0["description"] as? String)?.hasPrefix("live updates for artifact") ?? false)
+        }
         func summary(_ types: [String]) -> String? {
             var counts: [(type: String, count: Int)] = []
             for type in types {
