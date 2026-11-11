@@ -223,6 +223,7 @@ struct AgentSidebarView: View {
     @ViewBuilder
     private func tabMenu(_ tab: AgentSidebarModel.Tab) -> some View {
         Button("Rename Tab…") { model.rename(tab) }
+        Button("Set Short Label…") { model.editShortLabel(tab) }
         if let pwd = tab.pwd, !pwd.isEmpty {
             Button("Copy Working Directory") {
                 NSPasteboard.general.clearContents()
@@ -582,29 +583,38 @@ private struct AgentStatusBar: View {
     }
 }
 
-/// Two letters and a stable color that tell collapsed tabs apart: from the
+/// Up to four letters and a stable color that tell collapsed tabs apart: from the
 /// session title for agents, from the directory name for shells.
 struct AgentSidebarMonogram {
+    static let maxLetters = 4
+
     let letters: String
     let color: Color
 
-    init(tab: AgentSidebarModel.Tab) {
+    init(tab: AgentSidebarModel.Tab, automatic: Bool = false) {
         var source = tab.title
         if tab.agent == nil, let pwd = tab.pwd, !pwd.isEmpty {
             source = (pwd as NSString).lastPathComponent
         }
-        self.init(source)
+        self.init(source, label: automatic ? nil : tab.shortLabel)
     }
 
-    init(_ source: String) {
+    init(_ source: String, label: String? = nil) {
         let words = source.split { !$0.isLetter && !$0.isNumber }
-        let letters: String
-        if words.count >= 2 {
-            letters = String(words[0].prefix(1)) + String(words[1].prefix(1))
+        if let label, !label.isEmpty {
+            letters = String(label.prefix(Self.maxLetters))
         } else {
-            letters = String((words.first ?? "–").prefix(2))
+            // Four characters in all: fewer words give more of each.
+            let take: [Int]
+            switch words.count {
+            case 0, 1: take = [4]
+            case 2: take = [2, 2]
+            case 3: take = [2, 1, 1]
+            default: take = [1, 1, 1, 1]
+            }
+            let auto = zip(words, take).map { String($0.prefix($1)) }.joined()
+            letters = (auto.isEmpty ? "–" : auto).uppercased()
         }
-        self.letters = letters.uppercased()
 
         // djb2 over the words: stable across launches and status glyphs.
         var hash: UInt64 = 5381
@@ -635,7 +645,10 @@ private struct AgentSidebarRailItem: View {
                 Text(monogram.letters)
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
-                    .frame(width: 26, height: 14)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 2)
+                    .frame(width: 34, height: 14)
                     .background(monogram.color, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
             }
             .frame(width: Self.iconWidth, height: 44)

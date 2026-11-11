@@ -38,6 +38,8 @@ final class AgentSidebarModel: ObservableObject {
         var usage: AgentUsage?
         /// The agent finished while the user was looking elsewhere.
         var unread = false
+        /// The user's own letters for the collapsed sidebar.
+        var shortLabel: String?
         var git: AgentGitInfo?
 
         /// The state in words; the agent's own message where it says more.
@@ -373,6 +375,12 @@ final class AgentSidebarModel: ObservableObject {
                 result[index].unread = true
             }
         }
+        let labels = defaults.dictionary(forKey: AgentSidebarDefaults.shortLabels) as? [String: String] ?? [:]
+        if !labels.isEmpty {
+            for index in result.indices {
+                result[index].shortLabel = Self.shortLabelKey(result[index]).flatMap { labels[$0] }
+            }
+        }
         if result != tabs {
             tabs = result
         }
@@ -660,6 +668,45 @@ final class AgentSidebarModel: ObservableObject {
             "focus": true,
             "wait": true,
         ])
+    }
+
+    /// The label follows the agent session, or the directory for a plain shell.
+    static func shortLabelKey(_ tab: Tab) -> String? {
+        if tab.agent != nil, let session = tab.sessionID, !session.isEmpty {
+            return "session:" + session
+        }
+        if let pwd = tab.pwd, !pwd.isEmpty {
+            return "dir:" + pwd
+        }
+        return nil
+    }
+
+    /// Asks for the letters shown under the tab's icon; empty returns to the automatic ones.
+    func editShortLabel(_ tab: Tab) {
+        guard let key = Self.shortLabelKey(tab), let window = window(for: tab) else { return }
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.stringValue = tab.shortLabel ?? ""
+        field.placeholderString = AgentSidebarMonogram(tab: tab, automatic: true).letters
+
+        let alert = NSAlert()
+        alert.messageText = "Short Label"
+        alert.informativeText = "Up to \(AgentSidebarMonogram.maxLetters) characters shown under the icon in the collapsed sidebar."
+            + " Leave empty for the automatic label."
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            let label = String(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix(AgentSidebarMonogram.maxLetters))
+            Task { @MainActor in
+                var labels = UserDefaults.standard.dictionary(forKey: AgentSidebarDefaults.shortLabels) as? [String: String] ?? [:]
+                labels[key] = label.isEmpty ? nil : label
+                UserDefaults.standard.set(labels, forKey: AgentSidebarDefaults.shortLabels)
+                self.refresh()
+            }
+        }
     }
 
     /// Asks for a new tab title with Ghostty's own prompt.

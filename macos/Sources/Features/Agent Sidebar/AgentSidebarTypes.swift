@@ -32,6 +32,7 @@ enum AgentSidebarDefaults {
     /// `ask`, `always` or `never`.
     static let restoreMode = "AgentSidebarRestoreMode"
     static let statusBar = "AgentSidebarStatusBar"
+    static let shortLabels = "AgentSidebarShortLabels"
     static let peekOnHover = "AgentSidebarPeekOnHover"
     /// `daily`, `weekly`, `monthly` or `never`.
     static let upstreamInterval = "AgentSidebarUpstreamInterval"
