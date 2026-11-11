@@ -12,8 +12,41 @@ struct AgentUsage: Equatable {
     /// Input served from the prompt cache over the whole session.
     var cacheRead = 0
     var model: String?
+    /// Size of the model's context window, when the status line wrapper reported it.
+    var window: Int?
+    /// Share of the window in use, 0...100, as Claude Code counts it.
+    var percent: Double?
 
     var sessionTotal: Int { input + output }
+
+    /// Reads what `ghostty-agent-statusline` saved for a session.
+    static func window(session: String) -> (size: Int, percent: Double?)? {
+        guard session.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else {
+            return nil
+        }
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ghostty-agents/context/\(session).json")
+        guard let data = try? Data(contentsOf: url), data.count < 1 << 20,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let context = root["context_window"] as? [String: Any],
+              let size = (context["context_window_size"] as? NSNumber)?.intValue, size > 0
+        else { return nil }
+        return (size, (context["used_percentage"] as? NSNumber)?.doubleValue)
+    }
+
+    /// Status line files of sessions that are long gone.
+    static func removeStaleWindows() {
+        let manager = FileManager.default
+        let directory = manager.homeDirectoryForCurrentUser.appendingPathComponent(".ghostty-agents/context")
+        let cutoff = Date().addingTimeInterval(-14 * 86400)
+        for url in (try? manager.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
+            if let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+               modified < cutoff {
+                try? manager.removeItem(at: url)
+            }
+        }
+    }
 }
 
 /// Follows the transcripts of the sessions it is asked about.
@@ -97,6 +130,12 @@ final class AgentUsageTracker: @unchecked Sendable {
             }
         }
         session.lastWanted = Date()
+        if let window = AgentUsage.window(session: id) {
+            session.usage.window = window.size
+            // Empty right after a compaction: count from the transcript until it is back.
+            session.usage.percent = window.percent
+                ?? min(100, Double(session.usage.context) / Double(window.size) * 100)
+        }
 
         lock.lock()
         sessions[id] = session

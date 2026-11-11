@@ -4,7 +4,7 @@
 #   ghostty-agent-hook <agent> <state> [nopayload]
 #
 #   agent   claude | codex | gemini | copilot | opencode | aider
-#   state   working | waiting | done | idle | ended
+#   state   working | waiting | done | error | idle | ended
 #
 # The agent's hook system runs this with the hook input (JSON) on stdin. The
 # script finds the terminal (tty) the agent runs in and writes

@@ -129,13 +129,16 @@ enum AgentState: String {
     case background
     /// The agent finished its turn.
     case done
+    /// The turn was cut short by an API error.
+    case error
     /// A session exists but nothing has been asked yet.
     case idle
 
     /// Higher means more important when several panes share one tab.
     var priority: Int {
         switch self {
-        case .waiting: return 5
+        case .waiting: return 6
+        case .error: return 5
         case .working: return 4
         case .background: return 3
         case .done: return 2
@@ -149,6 +152,7 @@ enum AgentState: String {
         case .waiting: return "Needs you"
         case .background: return "Background work"
         case .done: return "Done"
+        case .error: return "Error"
         case .idle: return "Idle"
         }
     }
@@ -192,6 +196,9 @@ struct AgentHookStatus: Equatable {
                 message = pending.watching.map { "Done · " + $0 }
             }
         }
+        if shown == .error {
+            message = errorText(payload)
+        }
         return AgentHookStatus(
             agent: (root["agent"] as? String).flatMap { AgentKind(rawValue: $0) },
             state: shown,
@@ -200,6 +207,23 @@ struct AgentHookStatus: Equatable {
             cwd: payload?["cwd"] as? String,
             message: message
         )
+    }
+
+    /// What stopped the turn, from the StopFailure hook.
+    private static func errorText(_ payload: [String: Any]?) -> String {
+        switch payload?["error"] as? String {
+        case "rate_limit": return "Rate limit reached"
+        case "overloaded": return "API overloaded"
+        case "authentication_failed", "oauth_org_not_allowed", "cloud_credential_error": return "Sign-in problem"
+        case "account_on_hold", "billing_error": return "Billing problem"
+        case "model_not_found": return "Model not available"
+        case "server_error": return "API server error"
+        case "max_output_tokens": return "Output limit reached"
+        default:
+            let text = (payload?["last_assistant_message"] as? String ?? "")
+                .split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+            return text.isEmpty ? "Error" : String(text.prefix(80))
+        }
     }
 
     /// What a finished turn left behind, from the Stop hook's `background_tasks` and `session_crons`.

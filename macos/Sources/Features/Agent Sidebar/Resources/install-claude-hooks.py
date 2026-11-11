@@ -8,10 +8,15 @@
 The hook script is copied to ~/.ghostty-agents/bin/ghostty-agent-hook so the
 hooks keep working when this checkout moves. Existing hooks are kept; a backup
 of settings.json is written next to it before the first change.
+
+An existing statusLine command is wrapped by ghostty-agent-statusline, which
+saves the context window numbers and then runs the original command; --remove
+puts the original command back. Without a statusLine nothing is added.
 """
 import argparse
 import json
 import os
+import shlex
 import shutil
 import sys
 import time
@@ -24,6 +29,7 @@ EVENTS = {
     "PreToolUse": ("working", False),
     "Notification": ("waiting", True),
     "Stop": ("done", True),
+    "StopFailure": ("error", True),
     "SessionEnd": ("ended", False),
 }
 
@@ -43,6 +49,33 @@ def strip(hooks):
             hooks[event] = groups
         else:
             del hooks[event]
+
+
+STATUSLINE = "ghostty-agent-statusline"
+
+
+def unwrap_statusline(settings):
+    """Put back the status line command the wrapper was given."""
+    line = settings.get("statusLine")
+    if not isinstance(line, dict) or STATUSLINE not in str(line.get("command", "")):
+        return
+    try:
+        parts = shlex.split(line["command"])
+    except ValueError:
+        parts = []
+    if len(parts) > 1:
+        line["command"] = parts[1]
+    else:
+        del settings["statusLine"]
+
+
+def wrap_statusline(settings, wrapper):
+    line = settings.get("statusLine")
+    if not isinstance(line, dict) or line.get("type", "command") != "command":
+        return
+    command = line.get("command")
+    if isinstance(command, str) and command.strip():
+        line["command"] = f"'{wrapper}' {shlex.quote(command)}"
 
 
 def main():
@@ -68,12 +101,14 @@ def main():
     if not isinstance(hooks, dict):
         sys.exit(f'"hooks" in {args.settings} is not an object; nothing was changed.')
     strip(hooks)
+    unwrap_statusline(settings)
 
     installed = os.path.join(args.home, "bin", "ghostty-agent-hook")
     if not args.remove:
         for event, (state, with_payload) in EVENTS.items():
             command = f"'{installed}' claude {state}" + ("" if with_payload else " nopayload")
             hooks.setdefault(event, []).append({"hooks": [{"type": "command", "command": command}]})
+        wrap_statusline(settings, os.path.join(args.home, "bin", STATUSLINE))
     if not hooks:
         del settings["hooks"]
 
@@ -83,10 +118,12 @@ def main():
         return
 
     if not args.remove:
-        source = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ghostty-agent-hook")
+        here = os.path.dirname(os.path.abspath(__file__))
         os.makedirs(os.path.dirname(installed), exist_ok=True)
-        shutil.copyfile(source, installed)
-        os.chmod(installed, 0o755)
+        for name in ("ghostty-agent-hook", STATUSLINE):
+            target = os.path.join(os.path.dirname(installed), name)
+            shutil.copyfile(os.path.join(here, name), target)
+            os.chmod(target, 0o755)
 
     os.makedirs(os.path.dirname(args.settings), exist_ok=True)
     if os.path.exists(args.settings):

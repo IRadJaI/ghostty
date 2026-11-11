@@ -700,6 +700,7 @@ private struct AgentSettingsAgents: View {
     }
 
     @State private var hooksInstalled = false
+    @State private var hooksOutdated = false
     @State private var hooksMessage: String?
     @State private var customCommand = false
 
@@ -715,6 +716,11 @@ private struct AgentSettingsAgents: View {
                         hooksInstalled ? "On" : "Off",
                         systemImage: hooksInstalled ? "checkmark.circle.fill" : "minus.circle")
                         .foregroundStyle(hooksInstalled ? .green : .secondary)
+                    if hooksInstalled, hooksOutdated {
+                        Button("Update") {
+                            runInstaller(remove: false)
+                        }
+                    }
                     Button(hooksInstalled ? "Turn Off" : "Turn On") {
                         runInstaller(remove: hooksInstalled)
                     }
@@ -732,13 +738,16 @@ private struct AgentSettingsAgents: View {
             Text("Status")
         } footer: {
             Text("""
-                Shows “Working”, “Needs you” and “Done” next to the tabs that run Claude Code. \
-                Turning it on adds hooks to ~/.claude/settings.json (a backup copy is saved next to it) \
-                and takes effect in Claude Code sessions started afterwards.
+                Shows “Working”, “Needs you”, “Done” and errors next to the tabs that run Claude Code, \
+                and how full the context window is. Turning it on adds hooks to ~/.claude/settings.json \
+                and runs your status line command through a wrapper that keeps the context numbers \
+                (a backup copy of the file is saved next to it). It takes effect in Claude Code sessions \
+                started afterwards. “Update” appears when a newer app version needs more than is installed.
                 """)
         }
         .onAppear {
             hooksInstalled = Self.detectHooks()
+            hooksOutdated = Self.detectOutdatedHooks()
             customCommand = preset(for: agentPaneCommand) == .custom
             refreshPermission()
         }
@@ -889,6 +898,7 @@ private struct AgentSettingsAgents: View {
             }
             DispatchQueue.main.async {
                 hooksInstalled = Self.detectHooks()
+                hooksOutdated = Self.detectOutdatedHooks()
                 hooksMessage = failure ?? (remove
                     ? "Turned off."
                     : "Turned on. Restart running Claude Code sessions to see their status.")
@@ -907,6 +917,16 @@ private struct AgentSettingsAgents: View {
             return "/usr/bin/python3"
         }
         return nil
+    }
+
+    /// Installed by an older version: no error hook, or the status line is not wrapped.
+    private static func detectOutdatedHooks() -> Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        guard let settings = try? String(
+            contentsOf: home.appendingPathComponent(".claude/settings.json"), encoding: .utf8)
+        else { return false }
+        return !settings.contains("ghostty-agent-hook' claude error")
+            || (settings.contains("\"statusLine\"") && !settings.contains("ghostty-agent-statusline"))
     }
 
     private static func detectHooks() -> Bool {

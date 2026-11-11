@@ -40,6 +40,8 @@ final class AgentSidebarModel: ObservableObject {
         var unread = false
         /// The user's own letters for the collapsed sidebar.
         var shortLabel: String?
+        /// The panes of a split tab, for restoring it.
+        var layout: AgentSessionRestore.SavedPane?
         var git: AgentGitInfo?
 
         /// The state in words; the agent's own message where it says more.
@@ -353,6 +355,8 @@ final class AgentSidebarModel: ObservableObject {
                     sessionCwd: agent.sessionCwd,
                     usage: agent.kind == .claude
                         ? agent.sessionID.flatMap { AgentUsageTracker.shared.usage(for: $0) } : nil,
+                    layout: surfaces.count > 1
+                        ? controller.surfaceTree.root.map { paneLayout($0, hooks: hooks) } : nil,
                     git: git
                 ))
             }
@@ -375,11 +379,29 @@ final class AgentSidebarModel: ObservableObject {
                 result[index].unread = true
             }
         }
-        let labels = defaults.dictionary(forKey: AgentSidebarDefaults.shortLabels) as? [String: String] ?? [:]
-        if !labels.isEmpty {
-            for index in result.indices {
-                result[index].shortLabel = Self.shortLabelKey(result[index]).flatMap { labels[$0] }
+        var labels = defaults.dictionary(forKey: AgentSidebarDefaults.shortLabels) as? [String: String] ?? [:]
+        var labelsChanged = false
+        for index in result.indices {
+            let tab = result[index]
+            let key = Self.shortLabelKey(tab)
+            var label = key.flatMap { labels[$0] }
+            if tab.agent == nil {
+                tabLabels[tab.id] = nil
+            } else if let label {
+                tabLabels[tab.id] = label
+            } else if let carried = tabLabels[tab.id] {
+                // A new session in the same tab (after /clear) keeps the tab's label.
+                label = carried
+                if let key, key.hasPrefix("session:") {
+                    labels[key] = carried
+                    labelsChanged = true
+                }
             }
+            result[index].shortLabel = label
+        }
+        tabLabels = tabLabels.filter { liveWindows[$0.key] != nil }
+        if labelsChanged {
+            defaults.set(labels, forKey: AgentSidebarDefaults.shortLabels)
         }
         if result != tabs {
             tabs = result
@@ -406,6 +428,36 @@ final class AgentSidebarModel: ObservableObject {
     }
 
     // MARK: Agent detection
+
+    /// Labels the user gave to agent tabs, by tab, so they outlive the session.
+    private var tabLabels: [ObjectIdentifier: String] = [:]
+
+    /// The split tree of a tab as directories and Claude Code sessions.
+    private func paneLayout(
+        _ node: SplitTree<Ghostty.SurfaceView>.Node,
+        hooks: [String: AgentHookStatus]
+    ) -> AgentSessionRestore.SavedPane {
+        switch node {
+        case .leaf(let view):
+            var pane = AgentSessionRestore.SavedPane(cwd: view.pwd)
+            guard let model = view.surfaceModel, let tty = model.ttyName,
+                  let hook = hooks[(tty as NSString).lastPathComponent], (hook.agent ?? .claude) == .claude
+            else { return pane }
+            // A shell in front: the session that wrote the status is over.
+            if let name = model.foregroundPID.flatMap({ Self.processName(pid: $0) }),
+               AgentHookStore.shellNames.contains(name.lowercased()) {
+                return pane
+            }
+            pane.session = hook.sessionID
+            pane.sessionCwd = hook.cwd
+            return pane
+        case .split(let split):
+            return AgentSessionRestore.SavedPane(
+                children: [paneLayout(split.left, hooks: hooks), paneLayout(split.right, hooks: hooks)],
+                horizontal: split.direction == .horizontal,
+                ratio: (split.ratio * 1000).rounded() / 1000)
+        }
+    }
 
     private struct AgentInfo {
         var kind: AgentKind?
@@ -645,7 +697,7 @@ final class AgentSidebarModel: ObservableObject {
         let current = tabs.firstIndex { windows[$0.id]?.window === keyWindow } ?? -1
         for offset in 1...tabs.count {
             let tab = tabs[(current + offset) % tabs.count]
-            if tab.needsAttention || tab.unread {
+            if tab.needsAttention || tab.unread || tab.state == .error {
                 select(tab)
                 return
             }
@@ -703,6 +755,7 @@ final class AgentSidebarModel: ObservableObject {
             Task { @MainActor in
                 var labels = UserDefaults.standard.dictionary(forKey: AgentSidebarDefaults.shortLabels) as? [String: String] ?? [:]
                 labels[key] = label.isEmpty ? nil : label
+                self.tabLabels[tab.id] = label.isEmpty || tab.agent == nil ? nil : label
                 UserDefaults.standard.set(labels, forKey: AgentSidebarDefaults.shortLabels)
                 self.refresh()
             }

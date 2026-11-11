@@ -529,7 +529,19 @@ private struct AgentStatusBar: View {
                             .foregroundStyle(AgentSidebarStyle.color(for: state))
                     }
                     Spacer(minLength: 8)
-                    if let usage = tab.usage {
+                    if let usage = tab.usage, let percent = usage.percent, let window = usage.window {
+                        contextGauge(percent, of: window)
+                            .agentTooltip("""
+                                Context window: \(AgentSidebarFormat.tokens(usage.context)) of \
+                                \(AgentSidebarFormat.tokens(window)) tokens in use. \
+                                Session so far: \(AgentSidebarFormat.tokens(usage.sessionTotal)) new tokens.
+                                """)
+                        if let model = usage.model {
+                            separator
+                            Text(model)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if let usage = tab.usage {
                         metric("Context", usage.context)
                             .agentTooltip("Tokens in the context of the latest request")
                         separator
@@ -564,6 +576,26 @@ private struct AgentStatusBar: View {
 
     private var separator: some View {
         Text("·").foregroundStyle(.tertiary)
+    }
+
+    /// How full the context window is: a bar and the percentage.
+    private func contextGauge(_ percent: Double, of window: Int) -> some View {
+        let color: Color = percent >= 90 ? .red : (percent >= 75 ? .orange : .secondary)
+        return HStack(spacing: 6) {
+            Text("Context")
+                .foregroundStyle(.secondary)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.12))
+                Capsule().fill(percent >= 75 ? color : Color.accentColor)
+                    .frame(width: max(2, 48 * min(percent, 100) / 100))
+            }
+            .frame(width: 48, height: 5)
+            Text("\(Int(percent.rounded()))%")
+                .monospacedDigit()
+                .foregroundStyle(percent >= 75 ? color : Color.primary)
+            Text("of \(AgentSidebarFormat.tokens(window))")
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func metric(_ name: String, _ count: Int) -> some View {
@@ -697,8 +729,9 @@ private struct AgentSidebarRailItem: View {
         AgentSidebarMonogram(tab: tab)
     }
 
-    /// Orange: waits for the user or rang the bell. Green: finished and not seen yet.
+    /// Red: stopped by an error. Orange: waits for the user. Green: finished, not seen yet.
     private var badge: Color? {
+        if tab.state == .error { return .red }
         if tab.needsAttention { return .orange }
         return tab.unread ? AgentSidebarStyle.color(for: .done) : nil
     }
@@ -774,6 +807,12 @@ private struct AgentSidebarRow: View {
                 .buttonStyle(.plain)
                 .agentTooltip("Close tab")
                 .accessibilityLabel("Close tab")
+            } else if tab.state == .error {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 5)
+                    .accessibilityLabel("Stopped by an error")
             } else if tab.needsAttention {
                 Circle()
                     .fill(Color.orange)
@@ -962,6 +1001,7 @@ private enum AgentSidebarStyle {
         case .waiting: return .orange
         case .background: return .teal
         case .done: return .green
+        case .error: return .red
         case .idle: return .secondary
         }
     }

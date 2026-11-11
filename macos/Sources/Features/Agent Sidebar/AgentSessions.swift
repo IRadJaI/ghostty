@@ -26,9 +26,15 @@ enum AgentEnvironment {
 enum AgentHookInstaller {
     /// Replaces the installed hook script when the app carries a newer one.
     static func refreshInstalledScript() {
+        refresh("ghostty-agent-hook")
+        refresh("ghostty-agent-statusline")
+        DispatchQueue.global(qos: .utility).async { AgentUsage.removeStaleWindows() }
+    }
+
+    private static func refresh(_ name: String) {
         let installed = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".ghostty-agents/bin/ghostty-agent-hook")
-        guard let bundled = Bundle.main.url(forResource: "ghostty-agent-hook", withExtension: nil),
+            .appendingPathComponent(".ghostty-agents/bin/\(name)")
+        guard let bundled = Bundle.main.url(forResource: name, withExtension: nil),
               let new = try? Data(contentsOf: bundled),
               let old = try? Data(contentsOf: installed),
               new != old
@@ -87,7 +93,7 @@ final class AgentNotifier {
             if state != .done {
                 unread.remove(id)
             }
-            if state == .waiting, !(bellCounts && tab.hasBell) {
+            if state == .waiting || state == .error, !(bellCounts && tab.hasBell) {
                 waiting += 1
             }
             guard changed, !front else { continue }
@@ -95,6 +101,9 @@ final class AgentNotifier {
             switch state {
             case .waiting where defaults.bool(forKey: AgentSidebarDefaults.notifyWaiting):
                 post(tab, title: "\(tab.agent?.displayName ?? "Agent") needs you",
+                     sound: defaults.string(forKey: AgentSidebarDefaults.soundWaiting))
+            case .error where defaults.bool(forKey: AgentSidebarDefaults.notifyWaiting):
+                post(tab, title: "\(tab.agent?.displayName ?? "Agent") stopped with an error",
                      sound: defaults.string(forKey: AgentSidebarDefaults.soundWaiting))
             case .done where defaults.bool(forKey: AgentSidebarDefaults.notifyDone):
                 post(tab, title: "\(tab.agent?.displayName ?? "Agent") finished",
@@ -122,7 +131,7 @@ final class AgentNotifier {
         let content = UNMutableNotificationContent()
         content.title = title
         content.subtitle = tab.title
-        if tab.state == .waiting, let message = tab.message, !message.isEmpty {
+        if tab.state == .waiting || tab.state == .error, let message = tab.message, !message.isEmpty {
             content.body = message
         } else if let pwd = tab.pwd, !pwd.isEmpty {
             content.body = AgentSidebarFormat.abbreviate(path: pwd)
@@ -241,6 +250,32 @@ final class AgentSessionRestore {
         var session: String?
         /// Where that session was working; the shell may be elsewhere.
         var sessionCwd: String?
+        /// The panes, when the tab was split.
+        var layout: SavedPane?
+
+        var sessions: Int {
+            layout.map { $0.leaves.filter { $0.session != nil }.count } ?? (session != nil ? 1 : 0)
+        }
+    }
+
+    /// A pane of a split tab, or a split of two.
+    struct SavedPane: Codable, Equatable {
+        var cwd: String?
+        var session: String?
+        var sessionCwd: String?
+        var children: [SavedPane]?
+        /// Side by side; false is one above the other.
+        var horizontal: Bool?
+        var ratio: Double?
+
+        var leaves: [SavedPane] {
+            guard let children, !children.isEmpty else { return [self] }
+            return children.flatMap(\.leaves)
+        }
+
+        var asTab: SavedTab {
+            SavedTab(title: "", cwd: cwd, session: session, sessionCwd: sessionCwd)
+        }
     }
 
     private struct Snapshot: Codable {
@@ -297,7 +332,8 @@ final class AgentSessionRestore {
                 title: tab.title,
                 cwd: tab.pwd,
                 session: tab.agent == .claude ? tab.sessionID : nil,
-                sessionCwd: tab.agent == .claude ? tab.sessionCwd : nil)
+                sessionCwd: tab.agent == .claude ? tab.sessionCwd : nil,
+                layout: tab.layout)
         }
         guard saved != lastWritten else { return }
         lastWritten = saved
@@ -320,7 +356,7 @@ final class AgentSessionRestore {
         var spare: [AgentSidebarModel.Tab] = []
 
         var isEmpty: Bool { open.isEmpty && resume.isEmpty }
-        var sessionCount: Int { resume.count + open.filter { $0.session != nil }.count }
+        var sessionCount: Int { resume.count + open.reduce(0) { $0 + $1.sessions } }
     }
 
     /// Matches the saved tabs against the tabs that exist now.
@@ -329,7 +365,10 @@ final class AgentSessionRestore {
         let model = AgentSidebarModel.shared
         var free = model.tabs.filter { $0.agent == nil && model.hasShellInFront($0) }
         for tab in saved {
-            if let index = free.firstIndex(where: { $0.pwd == tab.cwd }) {
+            // A split tab is rebuilt whole.
+            if tab.layout != nil {
+                plan.open.append(tab)
+            } else if let index = free.firstIndex(where: { $0.pwd == tab.cwd }) {
                 let live = free.remove(at: index)
                 if tab.session != nil {
                     plan.resume.append((live, tab))
@@ -383,7 +422,8 @@ final class AgentSessionRestore {
         var entries = plan.open.map { tab -> String in
             let place = (Self.sessionDirectory(tab) ?? tab.cwd)
                 .map { AgentSidebarFormat.abbreviate(path: $0) } ?? tab.title
-            return place + (tab.session != nil ? "  —  Claude Code" : "")
+            let panes = tab.layout.map { "  —  \($0.leaves.count) panes" } ?? ""
+            return place + panes + (tab.sessions > 0 ? "  —  Claude Code" : "")
         }
         entries += plan.resume.map { entry in
             let place = (Self.sessionDirectory(entry.saved) ?? entry.tab.pwd)
@@ -447,16 +487,31 @@ final class AgentSessionRestore {
         var after = window
         var opened = false
         for tab in open {
-            var config = Ghostty.SurfaceConfiguration()
-            if let cwd = Self.sessionDirectory(tab) ?? tab.cwd, FileManager.default.fileExists(atPath: cwd) {
-                config.workingDirectory = cwd
-            }
-            if let command = Self.resumeCommand(tab) {
-                config.initialInput = command + "\n"
-            }
+            let panes = tab.layout?.leaves ?? []
+            let config = Self.configuration(panes.first?.asTab ?? tab)
             // Each tab goes after the previous one to keep the saved order.
             let created = TerminalController.newTab(appDelegate.ghostty, from: after, withBaseConfig: config)
             after = created?.window ?? after
+            if let layout = tab.layout, let created, let app = appDelegate.ghostty.app,
+               let first = created.surfaceTree.root?.leaves().first {
+                // The tab's own terminal becomes the first pane; the rest are new.
+                var firstUsed = false
+                func build(_ pane: SavedPane) -> SplitTree<Ghostty.SurfaceView>.Node {
+                    if let children = pane.children, children.count == 2 {
+                        return .split(.init(
+                            direction: pane.horizontal == false ? .vertical : .horizontal,
+                            ratio: min(max(pane.ratio ?? 0.5, 0.1), 0.9),
+                            left: build(children[0]),
+                            right: build(children[1])))
+                    }
+                    if !firstUsed {
+                        firstUsed = true
+                        return .leaf(view: first)
+                    }
+                    return .leaf(view: Ghostty.SurfaceView(app, baseConfig: Self.configuration(pane.asTab)))
+                }
+                created.surfaceTree = .init(root: build(layout), zoomed: nil)
+            }
             opened = opened || created != nil
         }
 
@@ -475,6 +530,18 @@ final class AgentSessionRestore {
                 }
             }
         }
+    }
+
+    /// A terminal in the saved directory that resumes the saved session, if any.
+    private static func configuration(_ tab: SavedTab) -> Ghostty.SurfaceConfiguration {
+        var config = Ghostty.SurfaceConfiguration()
+        if let cwd = sessionDirectory(tab) ?? tab.cwd, FileManager.default.fileExists(atPath: cwd) {
+            config.workingDirectory = cwd
+        }
+        if let command = resumeCommand(tab) {
+            config.initialInput = command + "\n"
+        }
+        return config
     }
 
     /// Nil without a valid id: it comes from a file, so only what an id contains is allowed.

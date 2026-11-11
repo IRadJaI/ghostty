@@ -1,0 +1,22 @@
+#!/bin/sh
+# agent-sidebar: keeps what Claude Code tells its status line (context window
+# use among it) for the sidebar, then runs the user's own status line command.
+#
+#   ghostty-agent-statusline ['<original statusLine command>']
+#
+# The input is saved as ~/.ghostty-agents/context/<session id>.json. The
+# original command gets the same input and its output is passed through.
+
+input="$(cat 2>/dev/null)"
+dir="${GHOSTTY_AGENTS_DIR:-$HOME/.ghostty-agents}/context"
+
+sid="$(printf '%s' "$input" | LC_ALL=C sed -n 's/.*"session_id"[ ]*:[ ]*"\([A-Za-z0-9_-]*\)".*/\1/p' 2>/dev/null | head -n 1)"
+if [ -n "$sid" ] && mkdir -p "$dir" 2>/dev/null; then
+  tmp="$dir/$sid.json.$$.tmp"
+  if printf '%s\n' "$input" >"$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$dir/$sid.json" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+  fi
+fi
+
+[ -n "${1:-}" ] || exit 0
+printf '%s' "$input" | /bin/sh -c "$1"
