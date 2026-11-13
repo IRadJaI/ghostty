@@ -33,6 +33,7 @@ enum AgentSidebarDefaults {
     static let restoreMode = "AgentSidebarRestoreMode"
     static let statusBar = "AgentSidebarStatusBar"
     static let shortLabels = "AgentSidebarShortLabels"
+    static let showProjects = "AgentSidebarShowProjects"
     static let peekOnHover = "AgentSidebarPeekOnHover"
     /// `daily`, `weekly`, `monthly` or `never`.
     static let upstreamInterval = "AgentSidebarUpstreamInterval"
@@ -57,6 +58,7 @@ enum AgentSidebarDefaults {
         showGitRepo: false,
         showGitBranch: true,
         showGitChanges: false,
+        showProjects: true,
         hideNativeTabBar: true,
         notifyWaiting: true,
         notifyDone: true,

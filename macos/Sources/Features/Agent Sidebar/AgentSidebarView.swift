@@ -98,6 +98,7 @@ struct AgentSidebarView: View {
     @AppStorage(AgentSidebarDefaults.showGitBranch) private var showGitBranch = true
     @AppStorage(AgentSidebarDefaults.showGitChanges) private var showGitChanges = false
     @AppStorage(AgentSidebarDefaults.hideNativeTabBar) private var hideNativeTabBar = true
+    @AppStorage(AgentSidebarDefaults.showProjects) private var showProjects = true
 
     @State private var searching = false
     @State private var query = ""
@@ -145,14 +146,30 @@ struct AgentSidebarView: View {
             Divider()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(visibleTabs) { tab in
-                        AgentSidebarRow(
-                            tab: tab,
-                            options: rowOptions,
-                            select: { model.select(tab) },
-                            close: { model.close(tab) }
-                        )
-                        .contextMenu { tabMenu(tab) }
+                    let marks = projectMarks
+                    let tabs = visibleTabs
+                    ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                        let mark = tab.project.flatMap { marks[$0] }
+                        VStack(alignment: .leading, spacing: 2) {
+                            if let mark, index == 0 || tabs[index - 1].project != tab.project {
+                                Text(mark.name)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(mark.color)
+                                    .lineLimit(1)
+                                    .padding(.leading, 10)
+                                    .padding(.top, index == 0 ? 0 : 4)
+                            }
+                            AgentSidebarRow(
+                                tab: tab,
+                                options: rowOptions,
+                                select: { model.select(tab) },
+                                close: { model.close(tab) }
+                            )
+                            .contextMenu { tabMenu(tab) }
+                        }
+                        .overlay(alignment: .leading) {
+                            AgentProjectStripe(color: mark?.color).offset(x: -6)
+                        }
                     }
                     if visibleTabs.isEmpty {
                         Text(agentsOnly ? "No agent tabs" : "No tabs")
@@ -186,13 +203,22 @@ struct AgentSidebarView: View {
                 .padding(.trailing, 5)
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 4) {
+                    let marks = projectMarks
                     ForEach(visibleTabs) { tab in
                         AgentSidebarRailItem(tab: tab, expanded: peeking) { model.select(tab) }
                             .contextMenu { tabMenu(tab) }
+                            .overlay(alignment: .leading) {
+                                AgentProjectStripe(color: tab.project.flatMap { marks[$0] }?.color)
+                                    .padding(.vertical, -1)
+                                    .offset(x: -4)
+                            }
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.leading, 5)
             }
+            // Room for the project stripe inside the clipped area.
+            .padding(.leading, -5)
             railButton("plus", "New tab") { model.newTab(from: windowProvider()) }
             railButton("sparkles", "Open agent pane") { model.openAgentPane(from: windowProvider()) }
         }
@@ -250,6 +276,10 @@ struct AgentSidebarView: View {
     }
 
     /// The tabs of the window this sidebar lives in, after filters.
+    private var projectMarks: [String: AgentProjects.Mark] {
+        showProjects ? AgentProjects.marks(model.tabs) : [:]
+    }
+
     private var visibleTabs: [AgentSidebarModel.Tab] {
         var tabs = model.tabs
         // The model already knows the tab group of every window, so `body`
@@ -350,6 +380,7 @@ struct AgentSidebarView: View {
             Section("Show") {
                 Toggle("Agents only", isOn: $agentsOnly)
                 Toggle("Recent agent sessions", isOn: $showRecent)
+                Toggle("Project colors", isOn: $showProjects)
             }
             Section("Tab metadata") {
                 Toggle("Agent status", isOn: $showStatus)

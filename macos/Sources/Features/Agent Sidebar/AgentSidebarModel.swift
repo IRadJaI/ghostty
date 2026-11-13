@@ -43,6 +43,8 @@ final class AgentSidebarModel: ObservableObject {
         /// The panes of a split tab, for restoring it.
         var layout: AgentSessionRestore.SavedPane?
         var git: AgentGitInfo?
+        /// The repository the tab works in.
+        var project: String?
 
         /// The state in words; the agent's own message where it says more.
         var statusText: String? {
@@ -357,7 +359,8 @@ final class AgentSidebarModel: ObservableObject {
                         ? agent.sessionID.flatMap { AgentUsageTracker.shared.usage(for: $0) } : nil,
                     layout: surfaces.count > 1
                         ? controller.surfaceTree.root.map { paneLayout($0, hooks: hooks) } : nil,
-                    git: git
+                    git: git,
+                    project: AgentProjects.root(of: agent.sessionCwd ?? pwd)
                 ))
             }
         }
