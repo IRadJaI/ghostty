@@ -406,6 +406,9 @@ final class AgentSidebarModel: ObservableObject {
         if result != tabs {
             tabs = result
         }
+        if !AgentSidebarDemo.enabled {
+            AgentFeed.shared.update(result, events: AgentNotifier.shared.events, front: AgentNotifier.shared.front)
+        }
         let liveIDs = Set(result.map(\.stableID))
         if autofix.keys.contains(where: { !liveIDs.contains($0) }), !AgentSidebarDemo.enabled {
             autofix = autofix.filter { liveIDs.contains($0.key) }

@@ -71,6 +71,8 @@ final class AgentNotifier {
         let defaults = UserDefaults.standard
         var states: [String: AgentState] = [:]
         var waiting = 0
+        events = []
+        front = []
         // The app's own badge already counts tabs whose bell rang.
         let bellCounts = (NSApp.delegate as? AppDelegate)?.ghostty.config.bellFeatures.contains(.attention) ?? false
 
@@ -82,6 +84,7 @@ final class AgentNotifier {
 
             let front = isFront(tab)
             if front {
+                self.front.insert(id)
                 unread.remove(id)
                 if notified.remove(id) != nil {
                     UNUserNotificationCenter.current()
@@ -97,6 +100,9 @@ final class AgentNotifier {
                 waiting += 1
             }
             guard changed, !front else { continue }
+            if state == .waiting || state == .error || state == .done {
+                events.insert(id)
+            }
 
             switch state {
             case .waiting where defaults.bool(forKey: AgentSidebarDefaults.notifyWaiting):
@@ -127,6 +133,9 @@ final class AgentNotifier {
 
     /// Tabs whose agent finished while the user was looking elsewhere.
     private(set) var unread = Set<String>()
+    /// Tabs that changed out of sight in the last update, and the tabs in view.
+    private(set) var events = Set<String>()
+    private(set) var front = Set<String>()
     private func post(_ tab: AgentSidebarModel.Tab, title: String, sound: String?) {
         let content = UNMutableNotificationContent()
         content.title = title

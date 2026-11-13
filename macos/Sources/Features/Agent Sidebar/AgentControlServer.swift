@@ -454,12 +454,18 @@ enum AgentControlOperations {
             AgentSettingsWindowController.shared.show(pane: stringParam(params, "pane"))
             return ["ok": true]
 
+        case "show_feed":
+            AgentFeed.shared.presentRequest += 1
+            return ["ok": true, "entries": AgentFeed.shared.entries.map { ["label": $0.label, "text": $0.text, "state": $0.state, "read": $0.read] }]
+
         case "snapshot_window":
             // Renders a window of this app to a PNG, for checking the UI
             // without screen recording permission.
             let visible = NSApp.windows.filter { $0.isVisible }
             let title = stringParam(params, "title")
-            let match = title.flatMap { title in visible.first { $0.title.contains(title) } }
+            let popover = params["popover"] as? Bool == true
+                ? visible.first { $0.className.contains("Popover") } : nil
+            let match = popover ?? title.flatMap { title in visible.first { $0.title.contains(title) } }
             guard let window = match ?? (title == nil ? (NSApp.keyWindow ?? NSApp.mainWindow ?? visible.first) : nil),
                   let view = window.contentView?.superview ?? window.contentView,
                   let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)

@@ -181,6 +181,7 @@ struct AgentSidebarView: View {
     private var railContent: some View {
         VStack(alignment: .leading, spacing: 6) {
             railButton("sidebar.left", "Keep the sidebar open") { visible = true }
+            AgentFeedButton(railWidth: AgentSidebarRailItem.iconWidth, showLabel: peeking)
             Divider()
                 .padding(.trailing, 5)
             ScrollView(showsIndicators: false) {
@@ -305,6 +306,8 @@ struct AgentSidebarView: View {
                 .fixedSize()
 
             Spacer(minLength: 4)
+
+            AgentFeedButton()
 
             Button {
                 model.openAgentPane(from: windowProvider())
@@ -992,7 +995,7 @@ private struct AgentSidebarIcon: View {
     }
 }
 
-private enum AgentSidebarStyle {
+enum AgentSidebarStyle {
     static let claude = Color(red: 0.85, green: 0.47, blue: 0.34)
 
     static func color(for state: AgentState) -> Color {
