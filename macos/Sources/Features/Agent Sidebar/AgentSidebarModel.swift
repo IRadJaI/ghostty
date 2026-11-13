@@ -687,6 +687,24 @@ final class AgentSidebarModel: ObservableObject {
         windows[tab.id]?.window
     }
 
+    /// Puts a tab next to another tab of the same window.
+    func move(_ tab: Tab, to target: Tab, after: Bool) {
+        guard tab.id != target.id,
+              let moved = windows[tab.id]?.window,
+              let targetWindow = windows[target.id]?.window,
+              let group = targetWindow.tabGroup,
+              group === moved.tabGroup
+        else { return }
+        let selected = group.selectedWindow
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        group.removeWindow(moved)
+        targetWindow.addTabbedWindowSafely(moved, ordered: after ? .above : .below)
+        selected?.makeKeyAndOrderFront(nil)
+        NSAnimationContext.endGrouping()
+        refresh()
+    }
+
     /// Switches to a tab.
     func select(_ tab: Tab) {
         guard let window = window(for: tab) else { return }
@@ -784,6 +802,29 @@ final class AgentSidebarModel: ObservableObject {
         else { return }
         window.makeKeyAndOrderFront(nil)
         controller.closeOtherTabs(nil)
+    }
+
+    /// Names of the panes of a split tab, in layout order.
+    func paneNames(of tab: Tab) -> [String] {
+        guard let controller = window(for: tab)?.windowController as? TerminalController else { return [] }
+        let surfaces = controller.surfaceTree.root?.leaves() ?? []
+        guard surfaces.count > 1 else { return [] }
+        return surfaces.enumerated().map { index, surface in
+            let path = surface.pwd.map { AgentSidebarFormat.abbreviate(path: $0) }
+            let name = surface.title.isEmpty ? (path ?? "Terminal") : surface.title
+            return "\(index + 1). \(name)"
+        }
+    }
+
+    /// Closes one pane of a split tab, with Ghostty's usual confirmation.
+    func closePane(_ tab: Tab, index: Int) {
+        guard let window = window(for: tab),
+              let controller = window.windowController as? TerminalController,
+              let surfaces = controller.surfaceTree.root?.leaves(),
+              surfaces.indices.contains(index)
+        else { return }
+        window.makeKeyAndOrderFront(nil)
+        controller.closeSurface(surfaces[index])
     }
 
     /// Closes a tab, with Ghostty's usual confirmation for running processes.

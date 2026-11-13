@@ -104,6 +104,7 @@ struct AgentSidebarView: View {
     @State private var query = ""
     @State private var recentExpanded = AgentSidebarDemo.enabled
     @State private var windowID: ObjectIdentifier?
+    @State private var drag = AgentTabDragState()
 
     var body: some View {
         Group {
@@ -166,6 +167,7 @@ struct AgentSidebarView: View {
                                 close: { model.close(tab) }
                             )
                             .contextMenu { tabMenu(tab) }
+                            .modifier(AgentTabDrag(tab: tab, state: $drag))
                         }
                         .overlay(alignment: .leading) {
                             AgentProjectStripe(color: mark?.color).offset(x: -6)
@@ -207,6 +209,7 @@ struct AgentSidebarView: View {
                     ForEach(visibleTabs) { tab in
                         AgentSidebarRailItem(tab: tab, expanded: peeking) { model.select(tab) }
                             .contextMenu { tabMenu(tab) }
+                            .modifier(AgentTabDrag(tab: tab, state: $drag))
                             .overlay(alignment: .leading) {
                                 AgentProjectStripe(color: tab.project.flatMap { marks[$0] }?.color)
                                     .padding(.vertical, -1)
@@ -258,6 +261,14 @@ struct AgentSidebarView: View {
             }
         }
         Divider()
+        let panes = model.paneNames(of: tab)
+        if !panes.isEmpty {
+            Menu("Close Split") {
+                ForEach(panes.indices, id: \.self) { index in
+                    Button(panes[index]) { model.closePane(tab, index: index) }
+                }
+            }
+        }
         Button("Close Tab") { model.close(tab) }
         Button("Close Other Tabs") { model.closeOthers(tab) }
     }

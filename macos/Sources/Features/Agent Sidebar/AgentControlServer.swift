@@ -454,6 +454,14 @@ enum AgentControlOperations {
             AgentSettingsWindowController.shared.show(pane: stringParam(params, "pane"))
             return ["ok": true]
 
+        case "move_tab":
+            let tabs = AgentSidebarModel.shared.tabs
+            guard let tab = tabs.first(where: { $0.stableID == stringParam(params, "tab") }),
+                  let target = tabs.first(where: { $0.stableID == stringParam(params, "target") })
+            else { throw AgentControlError("unknown tab") }
+            AgentSidebarModel.shared.move(tab, to: target, after: params["after"] as? Bool == true)
+            return ["ok": true, "tabs": AgentSidebarModel.shared.tabs.map(\.title)]
+
         case "show_feed":
             AgentFeed.shared.presentRequest += 1
             return ["ok": true, "entries": AgentFeed.shared.entries.map { ["label": $0.label, "text": $0.text, "state": $0.state, "read": $0.read] }]
